@@ -140,11 +140,22 @@ int main()
 		cout << "Error setting dictionary (framerate)" << endl;
 		return value;
 	}
+	/*
+	value = av_dict_set(&options, "preset", "medium", 0);
+	if (value < 0)
+	{
+		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (preset)\n");
+		cout << "Error setting dictionary (preset)" << endl;
+		return value;
+	}
+	*/
+
 
 	// 4. Fill the AVFormatContext opening the input file and reading its header
 	// (codecs are not opened, so we can't analyse them)
 	// AVFormatContext will hold information about the new input format (old one with options added) ???
 	AVFormatContext *pInFormatContext = NULL;
+	pInFormatContext = avformat_alloc_context(); // TODO: check this!
 	value = avformat_open_input(&pInFormatContext, input_filename, pInputFormat, &options);
 	if (value < 0)
 	{
@@ -152,6 +163,7 @@ int main()
 		cout << "Cannot open input file" << endl;
 		return value;
 	}
+
 
 	// stream (packets' flow) information analysis
 	// reads packets to get stream information
@@ -294,7 +306,8 @@ int main()
 		cout << "Error finding among the existing codecs, try again with another codec" << endl;
 		exit(1);
 	}
-	/* or
+	// or
+	/*
 	AVCodec *pOutCodec = avcodec_find_encoder(AV_CODEC_ID_H264);
 	if (!pOutCodec)
 	{
@@ -302,6 +315,7 @@ int main()
 		exit(1);
 	}
 	*/
+
 
 	// allocate memory for the output codec context
 	AVCodecContext *pOutCodecContext = avcodec_alloc_context3(pOutCodec);
@@ -315,13 +329,11 @@ int main()
 	cout << "Output codec: " << avcodec_get_name(pOutCodecContext->codec_id) << " (ID: " << pOutCodecContext->codec_id << ")" << endl;
 
 	// TODO: check this!
-	// av_opt_set(pOutCodecContext->priv_data, "preset", "slow", 0);
-	/*
+	// av_opt_set(pOutCodecContext->priv_data, "preset", "fast", 0);
 	if (pOutCodecContext->codec_id == AV_CODEC_ID_H264)
 	{
 		av_opt_set(pOutCodecContext->priv_data, "preset", "slow", 0); // ???
 	}
-	*/
 
 	// set output codec context properties
 	printf("Output (codec context/stream) properties:\n");
@@ -338,18 +350,24 @@ int main()
 	{
 		pOutCodecContext->pix_fmt = pInCodecContext->pix_fmt;
 	}
+	// print output codec context properties
 	printf("Output codec context: dimension=%dx%d - sample aspect ratio=%d/%d - pixel format=%s\n",
 		pOutCodecContext->width, pOutCodecContext->height,
 		pOutCodecContext->sample_aspect_ratio.num, pOutCodecContext->sample_aspect_ratio.den,
 		av_get_pix_fmt_name(pOutCodecContext->pix_fmt)
 	);
 	
+	/*
 	pOutCodecContext->bit_rate = 2 * 1000 * 1000;
 	pOutCodecContext->rc_buffer_size = 4 * 1000 * 1000;
 	pOutCodecContext->rc_max_rate = 2 * 1000 * 1000;
 	pOutCodecContext->rc_min_rate = 2.5 * 1000 * 1000;
+	*/
+	pOutCodecContext->bit_rate = 2 * 1000 * 1000;
+	pOutCodecContext->gop_size = 3;
+	pOutCodecContext->max_b_frames = 2;
 
-	// setting up time_base(s)
+	// setting up timebase(s)
 	AVRational input_framerate = av_guess_frame_rate(pInFormatContext, input_stream, NULL);
 	pOutCodecContext->time_base = av_inv_q(input_framerate);
 	pOutCodecContext->framerate = input_framerate;
@@ -367,6 +385,7 @@ int main()
 		return value;
 	}
 
+	
 	// get output stream parameters from output codec context
 	value = avcodec_parameters_from_context(output_stream->codecpar, pOutCodecContext);
 	if (value < 0)
@@ -376,14 +395,11 @@ int main()
 		avcodec_free_context(&pInCodecContext);
 		return value;
 	}
-
 	cout << "Output stream: framerate=" << output_stream->r_frame_rate.num << "/" << output_stream->r_frame_rate.den << endl;
-
-
-	/*
-	 * some container formats (like MP4) require global headers
-	 * mark the encoder so that it behaves accordingly ???
-	 */
+	
+	
+	// some container formats (like MP4) require global headers
+	// mark the encoder so that it behaves accordingly ???
 	if (pOutFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
 	{
 		pOutFormatContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -405,7 +421,7 @@ int main()
 
 	// mp4 container (or some advanced container file) requires header information
 	AVDictionary *muxer_options = NULL;
-	value = avformat_write_header(pOutFormatContext, &muxer_options);
+	value = avformat_write_header(pOutFormatContext, &muxer_options); // can I use options ???
 	if (value < 0)
 	{
 		cout << "Error writing the header context" << endl;
@@ -472,7 +488,6 @@ int main()
 
 
 	int response = 0;
-	int how_many_packets_to_process = 8;
 	int count_pts = 0;
 	int count_dts = 0;
 	// let's feed our packets from the input stream
