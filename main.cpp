@@ -76,7 +76,7 @@ void show_x11grab_device_option()
 
 bool keepRunning = true;
 void signalHandler( int signum ) {
-	cout << "Interrupt signal (CTRL+C) received.\n";
+	cout << "Interrupt signal (CTRL+C) received." << endl;
 
 	keepRunning = false;
 	// cleanup and close up stuff here  
@@ -133,7 +133,7 @@ int main()
 		cout << "Error setting dictionary (video_size)" << endl;
 		return value;
 	}
-	value = av_dict_set(&options, "framerate", "30", 0);
+	value = av_dict_set(&options, "framerate", "60", 0);
 	if (value < 0)
 	{
 		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (framerate)\n");
@@ -268,7 +268,6 @@ int main()
 	// ---------------------- Init output file (video.mp4) part ---------------------- //
 	// initializes the video output file and its properties
 
-	value = 0;
 	const char *output_filename = "video.mp4";
 
 	// we need to prepare the output media file
@@ -330,13 +329,14 @@ int main()
 
 	// TODO: check this!
 	// av_opt_set(pOutCodecContext->priv_data, "preset", "fast", 0);
+	/*
 	if (pOutCodecContext->codec_id == AV_CODEC_ID_H264)
 	{
 		av_opt_set(pOutCodecContext->priv_data, "preset", "slow", 0); // ???
 	}
+	*/
 
 	// set output codec context properties
-	printf("Output (codec context/stream) properties:\n");
 	// useless: pOutCodecContext->codec_id = AV_CODEC_ID_H264; // AV_CODEC_ID_MPEG4; // AV_CODEC_ID_H264 // AV_CODEC_ID_MPEG1VIDEO
 	// useless: pOutCodecContext->codec_type = AVMEDIA_TYPE_VIDEO;
 	pOutCodecContext->width = pInCodecContext->width; // 1920
@@ -357,22 +357,22 @@ int main()
 		av_get_pix_fmt_name(pOutCodecContext->pix_fmt)
 	);
 	
-	/*
-	pOutCodecContext->bit_rate = 2 * 1000 * 1000;
-	pOutCodecContext->rc_buffer_size = 4 * 1000 * 1000;
-	pOutCodecContext->rc_max_rate = 2 * 1000 * 1000;
-	pOutCodecContext->rc_min_rate = 2.5 * 1000 * 1000;
-	*/
-	pOutCodecContext->bit_rate = 2 * 1000 * 1000;
+
+	
+	pOutCodecContext->bit_rate = 400000;
 	pOutCodecContext->gop_size = 3;
 	pOutCodecContext->max_b_frames = 2;
+
+
 
 	// setting up timebase(s)
 	AVRational input_framerate = av_guess_frame_rate(pInFormatContext, input_stream, NULL);
 	pOutCodecContext->time_base = av_inv_q(input_framerate);
-	pOutCodecContext->framerate = input_framerate;
-	cout << "Output codec context: timebase=" << pOutCodecContext->time_base.num << "/" << pOutCodecContext->time_base.den;
-	cout << " - framerate=" << pOutCodecContext->framerate.num << "/" << pOutCodecContext->framerate.den << endl;
+	//pOutCodecContext->framerate = input_framerate;
+	printf("Output codec context: timebase=%d/%d, framerate=%d/%d\n",
+		pOutCodecContext->time_base.num, pOutCodecContext->time_base.den,
+		pOutCodecContext->framerate.num, pOutCodecContext->framerate.den
+	);
 
 	// turns on the encoder
 	// so we can proceed to the encoding process
@@ -385,7 +385,7 @@ int main()
 		return value;
 	}
 
-	
+
 	// get output stream parameters from output codec context
 	value = avcodec_parameters_from_context(output_stream->codecpar, pOutCodecContext);
 	if (value < 0)
@@ -395,9 +395,16 @@ int main()
 		avcodec_free_context(&pInCodecContext);
 		return value;
 	}
-	cout << "Output stream: framerate=" << output_stream->r_frame_rate.num << "/" << output_stream->r_frame_rate.den << endl;
+	/*
+	output_stream->time_base = pOutCodecContext->time_base;
+	output_stream->r_frame_rate = pOutCodecContext->framerate;
+	printf("Output stream: timebase=%d/%d, framerate=%d/%d\n",
+		output_stream->time_base.num, output_stream->time_base.den,
+		output_stream->r_frame_rate.num, output_stream->r_frame_rate.den
+	);
+	*/
 	
-	
+
 	// some container formats (like MP4) require global headers
 	// mark the encoder so that it behaves accordingly ???
 	if (pOutFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
@@ -488,8 +495,6 @@ int main()
 
 
 	int response = 0;
-	int count_pts = 0;
-	int count_dts = 0;
 	// let's feed our packets from the input stream
 	// until it has packets or until user hits CTRL+C
 	while (av_read_frame(pInFormatContext, pInPacket) >= 0 && keepRunning)
@@ -541,10 +546,6 @@ int main()
 					sws_scale(swsContext, pInFrame->data, pInFrame->linesize, 0, pInCodecContext->height, pOutFrame->data, pOutFrame->linesize);
 
 					// pOutFrame->pict_type = AV_PICTURE_TYPE_NONE; // ???
-					
-					// FIXME: fix dts/pts problem!
-					// pOutFrame->pts = count_pts++;
-					// pOutFrame->pkt_dts = count_dts++;
 
 					// printing output frame info
 					if (pInCodecContext->frame_number == 1)
@@ -552,12 +553,13 @@ int main()
 						cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output frame ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 					}
 					printf(
-						"Frame #%d (format=%s, type=%c) pts %ld [dts %ld]\n",
+						"Frame #%d (format=%s, type=%c): pts=%ld [dts=%ld], pts_time=%ld\n",
 						pInCodecContext->frame_number,
 						av_get_pix_fmt_name(static_cast<AVPixelFormat>(pOutFrame->format)),
 						av_get_picture_type_char(pOutFrame->pict_type),
 						pOutFrame->pts,
-						pOutFrame->pkt_dts
+						pOutFrame->pkt_dts,
+						pOutFrame->pts * output_stream->time_base.num / output_stream->time_base.den
 					);
 
 					/*
@@ -606,8 +608,9 @@ int main()
 						if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
 						{
 							/*
+							// ALL OK: https://stackoverflow.com/questions/55354120/ffmpeg-avcodec-receive-frame-returns-averroreagain
 							if (response == AVERROR(EAGAIN))
-								cout << "-> BREAKED! response=" << response << endl; // ALL OK
+								cout << "-> BREAKED! response=" << response << endl;
 							*/
 							break;
 						}
@@ -621,8 +624,12 @@ int main()
 						// useless: pOutPacket->stream_index = video_stream_index;
 
 
-						// ---------------------------- synchronize dts/pts ---------------------------- //
-
+						// ---------------------- synchronize output packet --------------------- //
+						
+						// adjusting output packet timestamps
+						av_packet_rescale_ts(pOutPacket, input_stream->time_base, output_stream->time_base);
+						
+						// adjusting output packet pts/dts
 						/*
 						cout << "Output packet duration: " << pOutPacket->duration << endl;
 						pOutPacket->pts = av_rescale_q(pOutPacket->pts, pOutCodecContext->time_base, output_stream->time_base);
@@ -630,35 +637,23 @@ int main()
 						cout << pOutPacket->pts << endl;
 						cout << pOutPacket->dts << endl;
 						*/
-
-						/*
-						pOutPacket->pts = av_rescale_q_rnd(pOutPacket->pts, input_stream->time_base, output_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-						pOutPacket->dts = av_rescale_q_rnd(pOutPacket->dts, input_stream->time_base, output_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-						pOutPacket->duration = av_rescale_q(pOutPacket->duration, input_stream->time_base, output_stream->time_base);
-						pOutPacket->pos = -1;
-						*/
-
 						
+						// adjusting output packet duration
 						// ERROR! (/0)
-						// pOutPacket->duration = output_stream->time_base.den / output_stream->time_base.num / output_stream->avg_frame_rate.num * output_stream->avg_frame_rate.den;
+						// pOutPacket->duration = (output_stream->time_base.den / output_stream->time_base.num) / (output_stream->avg_frame_rate.num * output_stream->avg_frame_rate.den);
+						// pOutPacket->duration = av_rescale_q(pOutPacket->duration, input_stream->time_base, output_stream->time_base);
 						/*
-						printf("%d %d %d %d", 
-							output_stream->time_base.den, 
-							output_stream->time_base.num,
-							output_stream->avg_frame_rate.num,
-							output_stream->avg_frame_rate.den
-						);
-						*/						
-						// cout << "Duration: " << pOutPacket->duration << endl;
-						
-						// adjusting timestamps
-						av_packet_rescale_ts(pOutPacket, input_stream->time_base, output_stream->time_base);
-						
+						printf("Output stream: timebase=%d/%d, framerate=%d/%d\n", 
+							output_stream->time_base.num, output_stream->time_base.den,
+							output_stream->avg_frame_rate.num, output_stream->avg_frame_rate.den
+						);			
+						cout << "Duration: " << pOutPacket->duration << endl;
+						*/
 
 						// ------------------------------------------------------------------------ //
 
-						// TODO: check this!
-						response = av_interleaved_write_frame(pOutFormatContext, pOutPacket); // why in the example I have pInPacket ???
+						// // 
+						response = av_interleaved_write_frame(pOutFormatContext, pOutPacket);
 						if (response < 0)
 						{
 							cout << "Error while receiving packet from decoder" << endl;
