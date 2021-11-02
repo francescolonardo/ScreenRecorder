@@ -1,5 +1,13 @@
-#undef _GLIBCXX_DEPRECATED
-#define _GLIBCXX_DEPRECATED
+#if defined(_WIN32) || defined(__CYGWIN__)
+    #define PLATFORM_NAME "windows" // Windows (x86 or x64)
+	#include <windows.h>
+#elif defined(__linux__)
+    #define PLATFORM_NAME "linux" // Linux
+	#include <X11/Xlib.h>
+#elif defined(__APPLE__) && defined(__MACH__)
+    #define PLATFORM_NAME "mac" // Apple Mac OS
+#endif
+
 
 #include <iostream>
 #include <cstdio>
@@ -10,6 +18,7 @@
 #include <string.h>
 #include <vector>
 #include <csignal>
+
 
 #define __STDC_CONSTANT_MACROS
 
@@ -43,40 +52,10 @@ extern "C"
 
 using namespace std;
 
-// Open input
-const char *input_filename = ":0.0+0,0"; // screen (1): x=0, y=0
-
-// show x11grab device
-void show_x11grab_device()
-{
-	AVFormatContext *pInFormatContext = avformat_alloc_context();
-	AVDictionary *options = NULL;
-	av_dict_set(&options, "list_devices", "true", 0); // ???
-	AVInputFormat *pInputFormat = av_find_input_format("x11grab");
-	cout << "======== Device Info =============" << endl;
-	avformat_open_input(&pInFormatContext, "video=dummy", pInputFormat, &options);
-	cout << "==================================" << endl;
-
-	avformat_close_input(&pInFormatContext);
-}
-
-// show x11grab device's option
-void show_x11grab_device_option()
-{
-	AVFormatContext *pInFormatContext = avformat_alloc_context();
-	AVDictionary *options = NULL;
-	av_dict_set(&options, "list_options", "true", 0);
-	AVInputFormat *pInputFormat = av_find_input_format("x11grab");
-	cout << "======== Device Option Info ======" << endl;
-	avformat_open_input(&pInFormatContext, input_filename, pInputFormat, &options);
-	cout << "==================================" << endl;
-
-	avformat_close_input(&pInFormatContext);
-}
 
 bool keepRunning = true;
 void signalHandler( int signum ) {
-	cout << "Interrupt signal (CTRL+C) received." << endl;
+	cout << "Interrupt signal (CTRL+C) received" << endl;
 
 	keepRunning = false;
 	// cleanup and close up stuff here  
@@ -85,21 +64,44 @@ void signalHandler( int signum ) {
 	// exit(signum);  
 }
 
+void getDisplayInfoLinux( int &scrn_x, int &scrn_y ) {
+	
+}
+
 int main()
 {
-
-	/*
-	avdevice_register_all();
-	show_x11grab_device();
-	show_x11grab_device_option();
-	return 0;
-	*/
-
+	int value = 0;
+	
+	// print detected OS
+	cout << "OS detected: " << PLATFORM_NAME << endl;
 
 	// register signal SIGINT (CTRL+C) and signal handler  
    	signal(SIGINT, signalHandler);  
 
-	int value = 0;
+	// get current display information
+	int screen_width = 0, screen_height = 0;
+	if (PLATFORM_NAME == "linux")
+	{
+		Display *display = XOpenDisplay(":0");
+		if (!display)
+		{
+			cout << "Cannot open display :0" << endl;
+			exit(1);
+		}
+		Screen *screen = DefaultScreenOfDisplay(display);
+		screen_width = screen->width;
+		screen_height = screen->height;
+	}
+	/*
+	else if (PLATFORM_NAME == "windows")
+	{
+		screen_width = (int) GetSystemMetrics(SM_CXSCREEN);
+  		screen_height = (int) GetSystemMetrics(SM_CYSCREEN);
+	}
+	*/
+
+	// input filename
+	string input_filename = ":0.0+0,0"; // current screen (:0, x=0, y=0)
 
 	// ---------------------- Input device part ---------------------- //
 
@@ -115,7 +117,15 @@ int main()
 	// 2. Specify the input format as: x11grab (Linux), dshow (Windows) or avfoundation (Mac)
 	// current below is for screen recording; to connect with camera use v4l2 as input parameter for av_find_input_format()
 	// AVInputFormat holds the header information from the input format (container)
-	AVInputFormat *pInputFormat = av_find_input_format("x11grab");
+	string input_device;
+	if (PLATFORM_NAME == "linux")
+		input_device = "x11grab";
+	else if (PLATFORM_NAME == "windows")
+		input_device = "dshow";
+	else if (PLATFORM_NAME == "mac")
+		input_device = "avfoundation";
+
+	AVInputFormat *pInputFormat = av_find_input_format(input_device.c_str());
 	if (!pInputFormat)
 	{
 		av_log(NULL, AV_LOG_ERROR, "Unknow format\n");
@@ -126,7 +136,8 @@ int main()
 	// 3. Set options for the demuxer
 	// that demultiplies the single input format (container) into different streams
 	AVDictionary *options = NULL;
-	value = av_dict_set(&options, "video_size", "1920x1200", 0);
+	string video_size = to_string(screen_width) + "x" + to_string(screen_height);
+	value = av_dict_set(&options, "video_size", video_size.c_str(), 0);
 	if (value < 0)
 	{
 		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (video_size)\n");
@@ -153,12 +164,27 @@ int main()
 	// AVFormatContext will hold information about the new input format (old one with options added) ???
 	AVFormatContext *pInFormatContext = NULL;
 	pInFormatContext = avformat_alloc_context(); // TODO: check this!
-	value = avformat_open_input(&pInFormatContext, input_filename, pInputFormat, &options);
+	value = avformat_open_input(&pInFormatContext, input_filename.c_str(), pInputFormat, &options);
 	if (value < 0)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
-		cout << "Cannot open input file" << endl;
-		return value;
+		input_filename = ":1.0+0,0"; // current screen (:1, x=0, y=0)
+		value = avformat_open_input(&pInFormatContext, input_filename.c_str(), pInputFormat, &options);
+		if (value < 0)
+		{
+			av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
+			cout << "Cannot open input file" << endl;
+			return value;
+		}
+		else
+		{
+			// print display information (:1)
+			printf("Display detected: :1, %dx%d\n", screen_width, screen_height);
+		}
+	}
+	else
+	{
+		// print display information (:0)
+		printf("Display detected: :0, %dx%d\n", screen_width, screen_height);
 	}
 
 	// stream (packets' flow) information analysis
@@ -174,7 +200,7 @@ int main()
 
 	// print input file information
 	cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ input device ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-	av_dump_format(pInFormatContext, 0, input_filename, 0);
+	av_dump_format(pInFormatContext, 0, input_filename.c_str(), 0);
 	cout << "Input file format (container) name: " << pInFormatContext->iformat->name << " (" << pInFormatContext->iformat->long_name << ")" << endl;
 
 	// ---------------------- Decoding part ---------------------- //
@@ -335,9 +361,9 @@ int main()
 	// setting up output codec context properties
 	// useless: pOutCodecContext->codec_id = pOutFormat->video_codec; // AV_CODEC_ID_H264; AV_CODEC_ID_MPEG4; AV_CODEC_ID_MPEG1VIDEO
 	// useless: pOutCodecContext->codec_type = AVMEDIA_TYPE_VIDEO;
-	pOutCodecContext->width = pInCodecContext->width; // 1920
-	pOutCodecContext->height = pInCodecContext->height; // 1200
-	pOutCodecContext->sample_aspect_ratio = pInCodecContext->sample_aspect_ratio; // 0/1
+	pOutCodecContext->width = pInCodecContext->width;
+	pOutCodecContext->height = pInCodecContext->height;
+	pOutCodecContext->sample_aspect_ratio = pInCodecContext->sample_aspect_ratio;
 	if (pOutCodec->pix_fmts)
 	{
 		pOutCodecContext->pix_fmt = pOutCodec->pix_fmts[0];
@@ -354,7 +380,7 @@ int main()
 	);
 	
 	// other output codec context properties
-	pOutCodecContext->bit_rate = 400 * 1000;
+	pOutCodecContext->bit_rate = 40 * 1000;
 	// pOutCodecContext->max_b_frames = 2; // I think we have just I frames (useless)
 	// pOutCodecContext->gop_size = 12; // I think we have just I frames (useless)
 
