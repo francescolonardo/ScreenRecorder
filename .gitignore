@@ -1,0 +1,5 @@
+# ignore all logs
+*.log
+# ignore video files
+*.mp4
+*.avi
