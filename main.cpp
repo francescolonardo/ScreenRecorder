@@ -15,9 +15,10 @@
 #include <fstream>
 #include <cstring>
 #include <math.h>
-#include <string.h>
+#include <string>
 #include <vector>
 #include <csignal>
+#include <regex>
 
 
 #define __STDC_CONSTANT_MACROS
@@ -64,19 +65,71 @@ void signalHandler( int signum ) {
 	// exit(signum);  
 }
 
-void getDisplayInfoLinux( int &scrn_x, int &scrn_y ) {
-	
-}
 
-int main()
+int main(int argc, const char *argv[]) // argv[1]: 
 {
+	/*
+	// TODO: add an "help"
+	// we expect at most 3 arguments (the last one is optional):
+	// the audio flag (e.g. audioy or audion), the output filename (e.g. video.mp4) and the screen size (e.g. 320x240)
+	if (argc < 2)
+	{
+		// TODO: write it up better
+		cout << "Too few arguments, they must be at least 2" << endl;
+		exit(1);
+	}
+	else if (argc > 3)
+	{
+		// TODO: write it up better
+		cout << "Too many arguments, they can be at most 3" << endl;
+		exit(1);
+	}
+
+	// checking audio flag
+	if (argv[1] != "audioy" || argv[1] != "audion")
+	{
+		// TODO: write it up better
+		cout << "Wrong (1st) argument, it can be: audioy or audion" << endl;
+		exit(1);
+	}
+	string audio_flag(argv[1]);
+	// checking output filename
+	vector<regex> regex_extensions({".*\\.mp4$", ".*\\.avi$"}); // accepted output extensions
+	for (int i=0; i<regex_extensions.size(); i++)
+	{
+		if (!regex_match(argv[2], regex_extensions[i]))
+		{
+			// TODO: write it up better
+			cout << "Wrong (2st) argument, the output format can be: mp4 or avi" << endl;
+			exit(1);
+		}
+	}
+	string output_filename_(argv[2]);
+	// checking screen size
+	if (argc == 3)
+	{
+		regex regex_size("(\d+)x(\d+)"); // accepted screen size format
+		if (!regex_match(argv[3], regex_size))
+		{
+			// TODO: write it up better
+			cout << "Wrong (3st) argument, the screen size must be in this format: widthxheight (e.g. 320x240)" << endl;
+			exit(1);
+		}
+	}
+	string screen_size(argv[3]);
+	*/
+
+
 	int value = 0;
 	
-	// print detected OS
-	cout << "OS detected: " << PLATFORM_NAME << endl;
-
 	// register signal SIGINT (CTRL+C) and signal handler  
-   	signal(SIGINT, signalHandler);  
+   	signal(SIGINT, signalHandler); 
+
+	// print detected OS
+	cout << "OS detected: " << PLATFORM_NAME << endl; 
+
+	// input filename
+	string input_filename;
 
 	// get current display information
 	int screen_width = 0, screen_height = 0;
@@ -86,11 +139,21 @@ int main()
 		if (!display)
 		{
 			cout << "Cannot open display :0" << endl;
-			exit(1);
+			display = XOpenDisplay(":1");
+			input_filename = ":1.0+0,0"; // current screen (:1, x=0, y=0)
+			// print display information (:1)
+			printf("Display detected: :1, ");
+		}
+		else
+		{
+			input_filename = ":0.0+0,0"; // current screen (:0, x=0, y=0)
+			// print display information (:0)
+			printf("Display detected: :0, ");
 		}
 		Screen *screen = DefaultScreenOfDisplay(display);
 		screen_width = screen->width;
 		screen_height = screen->height;
+		printf("%dx%d\n", screen_width, screen_height);
 	}
 	/*
 	else if (PLATFORM_NAME == "windows")
@@ -99,9 +162,6 @@ int main()
   		screen_height = (int) GetSystemMetrics(SM_CYSCREEN);
 	}
 	*/
-
-	// input filename
-	string input_filename = ":0.0+0,0"; // current screen (:0, x=0, y=0)
 
 	// ---------------------- Input device part ---------------------- //
 
@@ -167,24 +227,9 @@ int main()
 	value = avformat_open_input(&pInFormatContext, input_filename.c_str(), pInputFormat, &options);
 	if (value < 0)
 	{
-		input_filename = ":1.0+0,0"; // current screen (:1, x=0, y=0)
-		value = avformat_open_input(&pInFormatContext, input_filename.c_str(), pInputFormat, &options);
-		if (value < 0)
-		{
-			av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
-			cout << "Cannot open input file" << endl;
-			return value;
-		}
-		else
-		{
-			// print display information (:1)
-			printf("Display detected: :1, %dx%d\n", screen_width, screen_height);
-		}
-	}
-	else
-	{
-		// print display information (:0)
-		printf("Display detected: :0, %dx%d\n", screen_width, screen_height);
+		av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
+		cout << "Cannot open input file" << endl;
+		return value;
 	}
 
 	// stream (packets' flow) information analysis
@@ -380,7 +425,7 @@ int main()
 	);
 	
 	// other output codec context properties
-	pOutCodecContext->bit_rate = 40 * 1000;
+	pOutCodecContext->bit_rate = 4 * 1000; // 40 * 1000
 	// pOutCodecContext->max_b_frames = 2; // I think we have just I frames (useless)
 	// pOutCodecContext->gop_size = 12; // I think we have just I frames (useless)
 
