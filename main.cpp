@@ -450,7 +450,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	SwsContext* swsContext = sws_getContext(
 		pInCodecContext->width, pInCodecContext->height, pInCodecContext->pix_fmt,
 		dst_width, dst_height, dst_pix_fmt,
-		0, NULL, NULL, NULL);
+		SWS_DIRECT_BGR, NULL, NULL, NULL); // or SWS_BILINEAR
     if (!swsContext)
 	{
         cout << "Fail to sws_getContext" << endl;
