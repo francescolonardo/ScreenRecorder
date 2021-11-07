@@ -1,13 +1,12 @@
 #if defined(_WIN32) || defined(__CYGWIN__)
-    #define PLATFORM_NAME "windows" // Windows (x86 or x64)
-	#include <windows.h>
+#define PLATFORM_NAME "windows" // Windows (x86 or x64)
+#include <windows.h>
 #elif defined(__linux__)
-    #define PLATFORM_NAME "linux" // Linux
-	#include <X11/Xlib.h>
+#define PLATFORM_NAME "linux" // Linux
+#include <X11/Xlib.h>
 #elif defined(__APPLE__) && defined(__MACH__)
-    #define PLATFORM_NAME "mac" // Apple Mac OS
+#define PLATFORM_NAME "mac" // Apple Mac OS
 #endif
-
 
 #include <iostream>
 #include <cstdio>
@@ -19,7 +18,6 @@
 #include <vector>
 #include <csignal>
 #include <regex>
-
 
 #define __STDC_CONSTANT_MACROS
 
@@ -53,20 +51,19 @@ extern "C"
 
 using namespace std;
 
-
 bool keepRunning = true;
-void signalHandler( int signum ) {
+void signalHandler(int signum)
+{
 	cout << "Interrupt signal (CTRL+C) received" << endl;
 
 	keepRunning = false;
-	// cleanup and close up stuff here  
-	
+	// cleanup and close up stuff here
+
 	// terminate program
-	// exit(signum);  
+	// exit(signum);
 }
 
-
-int main(int argc, const char *argv[]) // argv[1]: 
+int main(int argc, const char *argv[]) // argv[1]:
 {
 	/*
 	// TODO: add an "help"
@@ -119,14 +116,13 @@ int main(int argc, const char *argv[]) // argv[1]:
 	string screen_size(argv[3]);
 	*/
 
-
 	int value = 0;
-	
-	// register signal SIGINT (CTRL+C) and signal handler  
-   	signal(SIGINT, signalHandler);
+
+	// register signal SIGINT (CTRL+C) and signal handler
+	signal(SIGINT, signalHandler);
 
 	// print detected OS
-	cout << "OS detected: " << PLATFORM_NAME << endl; 
+	cout << "OS detected: " << PLATFORM_NAME << endl;
 
 	// output filename
 	const char *output_filename = "video.mp4";
@@ -367,11 +363,10 @@ int main(int argc, const char *argv[]) // argv[1]:
 		pOutCodecContext->pix_fmt = pInCodecContext->pix_fmt;
 	// print output codec context properties
 	printf("Output codec context: dimension=%dx%d, sample_aspect_ratio=%d/%d, pix_fmt=%s\n",
-		pOutCodecContext->width, pOutCodecContext->height,
-		pOutCodecContext->sample_aspect_ratio.num, pOutCodecContext->sample_aspect_ratio.den,
-		av_get_pix_fmt_name(pOutCodecContext->pix_fmt)
-	);
-	
+		   pOutCodecContext->width, pOutCodecContext->height,
+		   pOutCodecContext->sample_aspect_ratio.num, pOutCodecContext->sample_aspect_ratio.den,
+		   av_get_pix_fmt_name(pOutCodecContext->pix_fmt));
+
 	// other output codec context properties
 	// pOutCodecContext->bit_rate = 400 * 1000 * 1000; // 400000 kbps
 	// output_stream->codecpar->bit_rate = 400 * 1000;
@@ -382,9 +377,8 @@ int main(int argc, const char *argv[]) // argv[1]:
 	pOutCodecContext->time_base = av_inv_q(input_framerate);
 	pOutCodecContext->framerate = input_framerate;
 	printf("Output codec context: time_base=%d/%d, framerate=%d/%d\n",
-		pOutCodecContext->time_base.num, pOutCodecContext->time_base.den,
-		pOutCodecContext->framerate.num, pOutCodecContext->framerate.den
-	);
+		   pOutCodecContext->time_base.num, pOutCodecContext->time_base.den,
+		   pOutCodecContext->framerate.num, pOutCodecContext->framerate.den);
 
 	// setting up output stream timebase/framerate
 	// output_stream->time_base = pOutCodecContext->time_base;
@@ -433,11 +427,10 @@ int main(int argc, const char *argv[]) // argv[1]:
 
 	// print output stream information
 	printf("Output stream: bit_rate=%ld, time_base=%d/%d, framerate=%d/%d\n",
-		output_stream->codecpar->bit_rate,
-		output_stream->time_base.num, output_stream->time_base.den,
-		output_stream->r_frame_rate.num, output_stream->r_frame_rate.den
-	);
-	
+		   output_stream->codecpar->bit_rate,
+		   output_stream->time_base.num, output_stream->time_base.den,
+		   output_stream->r_frame_rate.num, output_stream->r_frame_rate.den);
+
 	// unless it's a no file (we'll talk later about that) write to the disk (FLAG_WRITE)
 	// but basically it's a way to save the file to a buffer so you can store it wherever you want
 	if (!(pOutFormatContext->oformat->flags & AVFMT_NOFILE))
@@ -457,7 +450,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	// https://superuser.com/questions/980272/what-movflags-frag-keyframeempty-moov-flag-means
 	av_dict_set(&hdr_options, "movflags", "frag_keyframe+empty_moov+delay_moov+default_base_moof", 0);
 	// av_opt_set(pOutCodecContext->priv_data, "movflags", "frag_keyframe+delay_moov", 0);
-    // av_opt_set_int(pOutCodecContext->priv_data, "crf", 28, AV_OPT_SEARCH_CHILDREN); // change `cq` to `crf` if using libx264
+	// av_opt_set_int(pOutCodecContext->priv_data, "crf", 28, AV_OPT_SEARCH_CHILDREN); // change `cq` to `crf` if using libx264
 
 	// mp4 container (or some advanced container file) requires header information
 	value = avformat_write_header(pOutFormatContext, &hdr_options);
@@ -479,17 +472,17 @@ int main(int argc, const char *argv[]) // argv[1]:
 
 	// initialize sample scaler context (for converting from RGB to YUV)
 	const int dst_width = pOutCodecContext->width;
-    const int dst_height = pOutCodecContext->height;
-    const AVPixelFormat dst_pix_fmt = pOutCodecContext->pix_fmt;
-	SwsContext* swsContext = sws_getContext(
+	const int dst_height = pOutCodecContext->height;
+	const AVPixelFormat dst_pix_fmt = pOutCodecContext->pix_fmt;
+	SwsContext *swsContext = sws_getContext(
 		pInCodecContext->width, pInCodecContext->height, pInCodecContext->pix_fmt,
 		dst_width, dst_height, dst_pix_fmt,
 		SWS_DIRECT_BGR, NULL, NULL, NULL); // or SWS_BILINEAR
-    if (!swsContext)
+	if (!swsContext)
 	{
-        cout << "Failed to allocate sws context" << endl;
-        return -1;
-    }
+		cout << "Failed to allocate sws context" << endl;
+		return -1;
+	}
 
 	// now we're going to read the packets from the stream and decode them into frames
 	// but first, we need to allocate memory for both components
@@ -563,7 +556,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 
 				// <Encoding output video>
 
-				// 
+				//
 				pOutFrame->width = dst_width;
 				pOutFrame->height = dst_height;
 				pOutFrame->format = static_cast<int>(dst_pix_fmt);
@@ -580,24 +573,23 @@ int main(int argc, const char *argv[]) // argv[1]:
 
 				// from RGB to YUV
 				sws_scale(swsContext, pInFrame->data, pInFrame->linesize, 0, pInCodecContext->height, pOutFrame->data, pOutFrame->linesize);
-									
+
 				// useless (I think): pOutFrame->pict_type = AV_PICTURE_TYPE_NONE;
 
 				// printing output frame info
 				if (pInCodecContext->frame_number == 1)
 					cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output frame ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 				printf("Frame #%d (format=%s, type=%c): pts=%ld [dts=%ld], pts_time=%ld\n",
-					pInCodecContext->frame_number,
-					av_get_pix_fmt_name(static_cast<AVPixelFormat>(pOutFrame->format)),
-					av_get_picture_type_char(pOutFrame->pict_type),
-					pOutFrame->pts,
-					pOutFrame->pkt_dts,
-					pOutFrame->pts * output_stream->time_base.num / output_stream->time_base.den
-				);
+					   pInCodecContext->frame_number,
+					   av_get_pix_fmt_name(static_cast<AVPixelFormat>(pOutFrame->format)),
+					   av_get_picture_type_char(pOutFrame->pict_type),
+					   pOutFrame->pts,
+					   pOutFrame->pkt_dts,
+					   pOutFrame->pts * output_stream->time_base.num / output_stream->time_base.den);
 
 				// let's send the uncompressed output frame to the encoder
 				// through the output codec context
-				response = avcodec_send_frame(pOutCodecContext, pOutFrame);	
+				response = avcodec_send_frame(pOutCodecContext, pOutFrame);
 				while (response >= 0)
 				{
 
@@ -633,14 +625,13 @@ int main(int argc, const char *argv[]) // argv[1]:
 					pOutPacket->pos = -1;
 					*/
 					// pOutPacket->duration = output_stream->time_base.den / output_stream->time_base.num / input_stream->avg_frame_rate.num * input_stream->avg_frame_rate.den;
-					
+
 					// adjusting output packet timestamps
 					av_packet_rescale_ts(pOutPacket, input_stream->time_base, output_stream->time_base);
-					
+
 					// print output packet information
 					printf(" - Output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
-						pOutPacket->pts, pOutPacket->pts, pOutPacket->duration, pOutPacket->size
-					);
+						   pOutPacket->pts, pOutPacket->pts, pOutPacket->duration, pOutPacket->size);
 
 					// ------------------------------------------------------------------------ //
 
@@ -651,10 +642,9 @@ int main(int argc, const char *argv[]) // argv[1]:
 						cout << "Error while receiving packet from decoder" << endl;
 						return -1;
 					}
-
 				}
 				av_packet_unref(pOutPacket); // release output packet buffer data
-				av_frame_unref(pOutFrame); // release output frame buffer data
+				av_frame_unref(pOutFrame);	 // release output frame buffer data
 				// </Encoding output video>
 
 				av_frame_unref(pInFrame); // release input frame buffer data
@@ -725,17 +715,11 @@ end:
 	}
 
 	// free sws context
-	sws_freeContext(swsContext);
-	if (!swsContext)
+	if (swsContext)
 	{
-		cout << "SwsContext freed successfully" << endl;
+		sws_freeContext(swsContext);
+		swsContext = NULL;
 	}
-	else
-	{
-		cout << "Unable to free SwsContext" << endl;
-		exit(1);
-	}
-
 
 	// free packets/frames
 	if (pInPacket)
