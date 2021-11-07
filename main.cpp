@@ -193,13 +193,38 @@ int main(int argc, const char *argv[]) // argv[1]:
 	// AVFormatContext will hold information about the new input format (old one with options added) ???
 	AVFormatContext *pInFormatContext = NULL;
 	pInFormatContext = avformat_alloc_context();
-	value = avformat_open_input(&pInFormatContext, input_filename.c_str(), pInputFormat, NULL);
+	// setting up options for the demuxer
+	AVDictionary *in_options = NULL;
+	string video_size = to_string(screen_width) + "x" + to_string(screen_height);
+	value = av_dict_set(&in_options, "video_size", video_size.c_str(), 0);
+	if (value < 0)
+	{
+		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (video_size)\n");
+		cout << "Error setting dictionary (video_size)" << endl;
+		return value;
+	}
+	// value = av_dict_set(&in_options, "framerate", "30", 0);
+	if (value < 0)
+	{
+		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (framerate)\n");
+		cout << "Error setting dictionary (framerate)" << endl;
+		return value;
+	}
+	//value = av_dict_set(&in_options, "preset", "ultraslow", 0);
+	if (value < 0)
+	{
+		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (framerate)\n");
+		cout << "Error setting dictionary (preset)" << endl;
+		return value;
+	}
+	value = avformat_open_input(&pInFormatContext, input_filename.c_str(), pInputFormat, &in_options);
 	if (value < 0)
 	{
 		av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
 		cout << "Cannot open input file" << endl;
 		return value;
 	}
+	av_dict_free(&in_options);
 
 	// stream (packets' flow) information analysis
 	// reads packets to get stream information
@@ -236,7 +261,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	AVStream *input_stream = pInFormatContext->streams[video_stream_index];
 	// guessing input stream framerate
 	AVRational input_framerate = av_guess_frame_rate(pInFormatContext, input_stream, NULL);
-
+	// AVRational input_framerate = av_make_q(15, 1); // 15 fps
 	// the component that knows how to encode the stream it's the codec
 	// we can get it from the parameters of the codec used by the video stream (we just need codec_id)
 	AVCodec *pInCodec = avcodec_find_decoder(input_stream->codecpar->codec_id);
@@ -302,14 +327,6 @@ int main(int argc, const char *argv[]) // argv[1]:
 		exit(1);
 	}
 
-	// create video stream in the output format context
-	AVStream *output_stream = avformat_new_stream(pOutFormatContext, NULL);
-	if (!output_stream)
-	{
-		cout << "Cannot create an output AVStream" << endl;
-		exit(1);
-	}
-
 	// find and fill output codec
 	AVCodec *pOutCodec = avcodec_find_encoder(pOutputFormat->video_codec);
 	if (!pOutCodec)
@@ -317,6 +334,15 @@ int main(int argc, const char *argv[]) // argv[1]:
 		cout << "Error finding among the existing codecs, try again with another codec" << endl;
 		exit(1);
 	}
+
+	// create video stream in the output format context
+	AVStream *output_stream = avformat_new_stream(pOutFormatContext, pOutCodec);
+	if (!output_stream)
+	{
+		cout << "Cannot create an output AVStream" << endl;
+		exit(1);
+	}
+	output_stream->id = pOutFormatContext->nb_streams - 1;
 
 	// allocate memory for the output codec context
 	AVCodecContext *pOutCodecContext = avcodec_alloc_context3(pOutCodec);
@@ -347,21 +373,53 @@ int main(int argc, const char *argv[]) // argv[1]:
 	);
 	
 	// other output codec context properties
-	// pOutCodecContext->bit_rate = 4 * 1000; // kbps
+	// pOutCodecContext->bit_rate = 400 * 1000 * 1000; // 400000 kbps
+	// output_stream->codecpar->bit_rate = 400 * 1000;
 	// pOutCodecContext->max_b_frames = 2; // I think we have just I frames (useless)
 	// pOutCodecContext->gop_size = 12; // I think we have just I frames (useless)
 
 	// setting up output codec context timebase/framerate
 	pOutCodecContext->time_base = av_inv_q(input_framerate);
-	// pOutCodecContext->framerate = input_framerate;
+	pOutCodecContext->framerate = input_framerate;
 	printf("Output codec context: time_base=%d/%d, framerate=%d/%d\n",
 		pOutCodecContext->time_base.num, pOutCodecContext->time_base.den,
 		pOutCodecContext->framerate.num, pOutCodecContext->framerate.den
 	);
 
 	// setting up output stream timebase/framerate
-	output_stream->time_base = pOutCodecContext->time_base;
-	output_stream->r_frame_rate = pOutCodecContext->framerate;
+	// output_stream->time_base = pOutCodecContext->time_base;
+	// output_stream->r_frame_rate = pOutCodecContext->framerate;
+
+	// some container formats (like MP4) require global headers
+	// mark the encoder so that it behaves accordingly ???
+	if (pOutFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
+	{
+		pOutFormatContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}
+
+	// setting up options for the demuxer
+	AVDictionary *out_options = NULL;
+	if (pOutCodecContext->codec_id == AV_CODEC_ID_H264) //H.264
+	{
+		av_dict_set(&out_options, "preset", "medium", 0); // or slow ???
+		av_dict_set(&out_options, "tune", "zerolatency", 0);
+	}
+	if (pOutCodecContext->codec_id == AV_CODEC_ID_H265) //H.265
+	{
+		av_dict_set(&out_options, "preset", "ultrafast", 0);
+		av_dict_set(&out_options, "tune", "zero-latency", 0);
+	}
+	// turns on the encoder
+	// so we can proceed to the encoding process
+	value = avcodec_open2(pOutCodecContext, pOutCodec, &out_options);
+	if (value < 0)
+	{
+		cout << "Unable to turn on the encoder" << endl;
+		avformat_close_input(&pOutFormatContext);
+		avcodec_free_context(&pOutCodecContext);
+		return value;
+	}
+	av_dict_free(&out_options);
 
 	// get output stream parameters from output codec context
 	value = avcodec_parameters_from_context(output_stream->codecpar, pOutCodecContext);
@@ -379,14 +437,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 		output_stream->time_base.num, output_stream->time_base.den,
 		output_stream->r_frame_rate.num, output_stream->r_frame_rate.den
 	);
-
-	// some container formats (like MP4) require global headers
-	// mark the encoder so that it behaves accordingly ???
-	if (pOutFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
-	{
-		pOutFormatContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-	}
-
+	
 	// unless it's a no file (we'll talk later about that) write to the disk (FLAG_WRITE)
 	// but basically it's a way to save the file to a buffer so you can store it wherever you want
 	if (!(pOutFormatContext->oformat->flags & AVFMT_NOFILE))
@@ -402,21 +453,14 @@ int main(int argc, const char *argv[]) // argv[1]:
 	}
 
 	// setting up options for the demuxer
-	// that demultiplies the single input format (container) into different streams
-	AVDictionary *options = NULL;
-	string video_size = to_string(screen_width) + "x" + to_string(screen_height);
-	value = av_dict_set(&options, "video_size", video_size.c_str(), 0);
-	if (value < 0)
-	{
-		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (video_size)\n");
-		cout << "Error setting dictionary (video_size)" << endl;
-		return value;
-	}
+	AVDictionary *hdr_options = NULL;
 	// https://superuser.com/questions/980272/what-movflags-frag-keyframeempty-moov-flag-means
-	av_dict_set(&options, "movflags", "frag_keyframe+delay_moov", 0);
+	av_dict_set(&hdr_options, "movflags", "frag_keyframe+empty_moov+delay_moov+default_base_moof", 0);
+	// av_opt_set(pOutCodecContext->priv_data, "movflags", "frag_keyframe+delay_moov", 0);
+    // av_opt_set_int(pOutCodecContext->priv_data, "crf", 28, AV_OPT_SEARCH_CHILDREN); // change `cq` to `crf` if using libx264
 
 	// mp4 container (or some advanced container file) requires header information
-	value = avformat_write_header(pOutFormatContext, &options);
+	value = avformat_write_header(pOutFormatContext, &hdr_options);
 	if (value < 0)
 	{
 		cout << "Error writing the header context" << endl;
@@ -424,17 +468,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 		// goto end;
 	}
 	// cout << "-> Output video file's header (" << output_filename << ") writed" << endl;
-
-	// turns on the encoder
-	// so we can proceed to the encoding process
-	value = avcodec_open2(pOutCodecContext, pOutCodec, NULL);
-	if (value < 0)
-	{
-		cout << "Unable to turn on the encoder" << endl;
-		avformat_close_input(&pOutFormatContext);
-		avcodec_free_context(&pOutCodecContext);
-		return value;
-	}
+	av_dict_free(&hdr_options);
 
 	// print output file information
 	cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output file ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
@@ -453,8 +487,8 @@ int main(int argc, const char *argv[]) // argv[1]:
 		SWS_DIRECT_BGR, NULL, NULL, NULL); // or SWS_BILINEAR
     if (!swsContext)
 	{
-        cout << "Fail to sws_getContext" << endl;
-        return 2;
+        cout << "Failed to allocate sws context" << endl;
+        return -1;
     }
 
 	// now we're going to read the packets from the stream and decode them into frames
@@ -489,6 +523,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	}
 
 	int response = 0;
+	int ts = 0;
 	// let's feed our packets from the input stream
 	// until it has packets or until user hits CTRL+C
 	while (av_read_frame(pInFormatContext, pInPacket) >= 0 && keepRunning)
@@ -497,7 +532,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 		if (pInPacket->stream_index == video_stream_index)
 		{
 			// <Transcoding output video>
-			
+
 			// let's send the input (compressed) packet to the decoder
 			// through the input codec context
 			response = avcodec_send_packet(pInCodecContext, pInPacket);
@@ -589,7 +624,14 @@ int main(int argc, const char *argv[]) // argv[1]:
 
 					// ---------------------- synchronize output packet --------------------- //
 
-					// adjusting duration
+					// adjusting dts/pts/duration
+					/*
+					pOutPacket->pts = ts;
+					pOutPacket->dts = ts;
+					pOutPacket->duration = av_rescale_q(pOutPacket->duration, input_stream->time_base, output_stream->time_base);
+					ts += pOutPacket->duration;
+					pOutPacket->pos = -1;
+					*/
 					// pOutPacket->duration = output_stream->time_base.den / output_stream->time_base.num / input_stream->avg_frame_rate.num * input_stream->avg_frame_rate.den;
 					
 					// adjusting output packet timestamps
@@ -654,15 +696,11 @@ end:
 		exit(1);
 	}
 
-	// free input options TODO: check this!
-	av_dict_free(&options);
-
 	// free output format context
 	if (pOutFormatContext && !(pOutFormatContext->oformat->flags & AVFMT_NOFILE))
 	{
 		avio_closep(&pOutFormatContext->pb);
 	}
-	
 	avformat_close_input(&pOutFormatContext);
 	if (!pOutFormatContext)
 	{
@@ -674,17 +712,48 @@ end:
 		exit(1);
 	}
 
-	if (!pInFrame)
+	// free output codec context
+	avcodec_free_context(&pOutCodecContext);
+	if (!pOutCodecContext)
 	{
-		av_frame_free(&pInFrame);
-		pInFrame = NULL;
+		cout << "Output AVCodecContext freed successfully" << endl;
 	}
-	if (!pInPacket)
+	else
+	{
+		cout << "Unable to free output AVCodecContext" << endl;
+		exit(1);
+	}
+
+	// free sws context
+	sws_freeContext(swsContext);
+	if (!swsContext)
+	{
+		cout << "SwsContext freed successfully" << endl;
+	}
+	else
+	{
+		cout << "Unable to free SwsContext" << endl;
+		exit(1);
+	}
+
+
+	// free packets/frames
+	if (pInPacket)
 	{
 		av_packet_free(&pInPacket);
 		pInPacket = NULL;
 	}
-	if (!pOutFrame)
+	if (pInFrame)
+	{
+		av_frame_free(&pInFrame);
+		pInFrame = NULL;
+	}
+	if (pOutPacket)
+	{
+		av_packet_free(&pOutPacket);
+		pOutPacket = NULL;
+	}
+	if (pOutFrame)
 	{
 		av_frame_free(&pOutFrame);
 		pOutFrame = NULL;
