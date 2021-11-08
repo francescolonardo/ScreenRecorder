@@ -18,6 +18,7 @@
 #include <vector>
 #include <csignal>
 #include <regex>
+#include <ctime>
 
 #define __STDC_CONSTANT_MACROS
 
@@ -50,6 +51,33 @@ extern "C"
 #endif
 
 using namespace std;
+
+string getTimestamp()
+{
+	const auto now = time(NULL);
+	char ts_str[16];
+	return strftime(ts_str, sizeof(ts_str), "%Y%m%d%H%M%S", localtime(&now)) ? ts_str : "";
+}
+
+ofstream log_file;
+void logger(string str)
+{
+	log_file.open("logs/log_" + getTimestamp() + ".txt", ofstream::app);
+	log_file.write(str.c_str(), str.size());
+	log_file.close();
+}
+
+char errbuf[32];
+void debugger(string str, int level, int errnum)
+{
+	if (errnum < 0)
+	{
+		av_strerror(errnum, errbuf, sizeof(errbuf));
+		str += errbuf;
+	}
+	logger(str);
+	av_log(NULL, level, str.c_str());
+}
 
 bool keepRunning = true;
 void signalHandler(int signum)
@@ -122,7 +150,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	signal(SIGINT, signalHandler);
 
 	// print detected OS
-	cout << "OS detected: " << PLATFORM_NAME << endl;
+	debugger("OS detected: " + static_cast<string>(PLATFORM_NAME) + "\n", AV_LOG_INFO, 0);
 
 	// output filename
 	const char *output_filename = "video.mp4";
@@ -137,22 +165,22 @@ int main(int argc, const char *argv[]) // argv[1]:
 		Display *display = XOpenDisplay(":0");
 		if (!display)
 		{
-			cout << "Cannot open display :0" << endl;
+			debugger("Cannot open display :0\n", AV_LOG_ERROR, 0);
 			display = XOpenDisplay(":1");
 			screen_url = ":1.0+0,0"; // current screen (:1, x=0, y=0)
 			// print display information (:1)
-			printf("Display detected: :1, ");
+			debugger("Display detected: :1, ", AV_LOG_INFO, 0);
 		}
 		else
 		{
 			screen_url = ":0.0+0,0"; // current screen (:0, x=0, y=0)
 			// print display information (:0)
-			printf("Display detected: :0, ");
+			debugger("Display detected: :0, ", AV_LOG_INFO, 0);
 		}
 		Screen *screen = DefaultScreenOfDisplay(display);
 		screen_width = screen->width;
 		screen_height = screen->height;
-		printf("%dx%d\n", screen_width, screen_height);
+		debugger(to_string(screen_width) + "x" + to_string(screen_height) + "\n", AV_LOG_INFO, 0);
 	}
 	/*
 	else if (PLATFORM_NAME == "windows")
@@ -179,8 +207,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	AVInputFormat *vin_format = av_find_input_format(screen_device.c_str());
 	if (!vin_format)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Unknow format\n");
-		cout << "Unknow input format" << endl;
+		debugger("Unknow screen device\n", AV_LOG_ERROR, 0);
 		exit(1);
 	}
 
@@ -195,29 +222,25 @@ int main(int argc, const char *argv[]) // argv[1]:
 	value = av_dict_set(&in_options, "video_size", video_size.c_str(), 0);
 	if (value < 0)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (video_size)\n");
-		cout << "Error setting dictionary (video_size)" << endl;
+		debugger("Error setting input options (video_size)\n", AV_LOG_ERROR, value);
 		return value;
 	}
 	// value = av_dict_set(&in_options, "framerate", "30", 0);
 	if (value < 0)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (framerate)\n");
-		cout << "Error setting dictionary (framerate)" << endl;
+		debugger("Error setting input options (framerate)\n", AV_LOG_ERROR, value);
 		return value;
 	}
 	//value = av_dict_set(&in_options, "preset", "ultraslow", 0);
 	if (value < 0)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Error setting dictionary (framerate)\n");
-		cout << "Error setting dictionary (preset)" << endl;
+		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
 		return value;
 	}
 	value = avformat_open_input(&in_format_context, screen_url.c_str(), vin_format, &in_options);
 	if (value < 0)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
-		cout << "Cannot open input file" << endl;
+		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
 		return value;
 	}
 	av_dict_free(&in_options);
@@ -228,8 +251,7 @@ int main(int argc, const char *argv[]) // argv[1]:
 	value = avformat_find_stream_info(in_format_context, NULL);
 	if (value < 0)
 	{
-		av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
-		cout << "Cannot find stream information" << endl;
+		debugger("Cannot find stream information\n", AV_LOG_ERROR, value);
 		return value;
 	}
 

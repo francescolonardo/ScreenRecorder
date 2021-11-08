@@ -109,6 +109,7 @@ public:
 	void prepareOutputFile();
 	void prepareCapture();
 	void captureFrames();
+	void deallocateResources();
 };
 
 #endif

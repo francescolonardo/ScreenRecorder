@@ -8,6 +8,7 @@ ScreenRecorder::ScreenRecorder()
 
 ScreenRecorder::~ScreenRecorder()
 {
+	deallocateResources();
 }
 
 void openInputDevices()
@@ -31,5 +32,9 @@ void prepareCapture()
 }
 
 void captureFrames()
+{
+}
+
+void deallocateResources()
 {
 }
