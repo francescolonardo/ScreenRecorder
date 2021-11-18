@@ -2,7 +2,7 @@
 
 using namespace std;
 
-ScreenRecorder::ScreenRecorder()
+ScreenRecorder::ScreenRecorder(string out_filename) : out_filename(out_filename)
 {
 // OS detection
 #if defined(__linux__)
@@ -19,8 +19,6 @@ ScreenRecorder::ScreenRecorder()
 
 	value = 0;
 	response = 0;
-
-	out_filename = "video.mp4"; // TODO: implement this
 
 	// TODO: check if I need all these global variables
 	// video
@@ -60,8 +58,9 @@ ScreenRecorder::ScreenRecorder()
 
 ScreenRecorder::~ScreenRecorder()
 {
-	this->deallocateResourcesVideo();
-	this->deallocateResourcesAudio();
+	av_write_trailer(out_format_context);
+	deallocateResourcesVideo();
+	deallocateResourcesAudio();
 
 	// TODO: remember to clean (e.g. tmp_str)
 }
@@ -327,7 +326,7 @@ void ScreenRecorder::prepareEncoderVideo()
 	if (!out_format)
 	{
 		// (try to) guess output format from output filename
-		out_format = av_guess_format(NULL, out_filename, NULL);
+		out_format = av_guess_format(NULL, out_filename.c_str(), NULL);
 		if (!out_format)
 			debugger("Failed to guess output format\n", AV_LOG_ERROR, 0);
 	}
@@ -335,7 +334,7 @@ void ScreenRecorder::prepareEncoderVideo()
 	{
 		// we need to prepare the output media file
 		// allocate memory for the output format context
-		value = avformat_alloc_output_context2(&out_format_context, out_format, NULL, out_filename);
+		value = avformat_alloc_output_context2(&out_format_context, out_format, NULL, out_filename.c_str());
 		if (!out_format_context)
 			debugger("Failed to allocate memory for the output format context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 	}
@@ -443,7 +442,7 @@ void ScreenRecorder::prepareEncoderAudio()
 	if (!out_format)
 	{
 		// (try to) guess output format from output filename
-		out_format = av_guess_format(NULL, out_filename, NULL);
+		out_format = av_guess_format(NULL, out_filename.c_str(), NULL);
 		if (!out_format)
 			debugger("Failed to guess output format\n", AV_LOG_ERROR, 0);
 	}
@@ -452,7 +451,7 @@ void ScreenRecorder::prepareEncoderAudio()
 	{
 		// we need to prepare the output media file
 		// allocate memory for the output format context
-		value = avformat_alloc_output_context2(&out_format_context, out_format, NULL, out_filename);
+		value = avformat_alloc_output_context2(&out_format_context, out_format, NULL, out_filename.c_str());
 		if (!out_format_context)
 			debugger("Failed to allocate memory for the output format context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 	}
@@ -545,10 +544,10 @@ void ScreenRecorder::prepareOutputFile()
 	// but basically it's a way to save the file to a buffer so you can store it wherever you want
 	if (!(out_format_context->oformat->flags & AVFMT_NOFILE))
 	{
-		value = avio_open(&out_format_context->pb, out_filename, AVIO_FLAG_WRITE);
+		value = avio_open(&out_format_context->pb, out_filename.c_str(), AVIO_FLAG_WRITE);
 		if (value < 0)
 		{
-			snprintf(tmp_str, sizeof(tmp_str), "Failed opening output file %s\n", out_filename);
+			snprintf(tmp_str, sizeof(tmp_str), "Failed opening output file %s\n", out_filename.c_str());
 			debugger(tmp_str, AV_LOG_ERROR, value);
 		}
 		// cout << "Empty output video file (" << out_filename << ") created" << endl;
@@ -573,7 +572,7 @@ void ScreenRecorder::prepareOutputFile()
 	cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output file ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 	snprintf(tmp_str, sizeof(tmp_str), "Output file format (container) name: %s (%s)\n", out_format_context->oformat->name, out_format_context->oformat->long_name);
 	debugger(tmp_str, AV_LOG_INFO, 0);
-	av_dump_format(out_format_context, 0, out_filename, 1);
+	av_dump_format(out_format_context, 0, out_filename.c_str(), 1);
 }
 
 void ScreenRecorder::prepareCaptureVideo()
@@ -745,10 +744,6 @@ void ScreenRecorder::captureFramesVideo(bool &sig_ctrl_c)
 
 		// ------------------------------- /transcode video ------------------------------ //
 	}
-
-	// https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html#ga7f14007e7dc8f481f054b21614dfec13
-	av_write_trailer(out_format_context);
-	cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ end video ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 }
 
 void ScreenRecorder::captureFramesAudio(bool &sig_ctrl_c)
@@ -952,10 +947,6 @@ void ScreenRecorder::captureFramesAudio(bool &sig_ctrl_c)
 
 		// ------------------------------- /transcode audio ------------------------------- //
 	}
-
-	// https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html#ga7f14007e7dc8f481f054b21614dfec13
-	av_write_trailer(out_format_context);
-	cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ end audio ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 }
 
 void ScreenRecorder::deallocateResourcesVideo()

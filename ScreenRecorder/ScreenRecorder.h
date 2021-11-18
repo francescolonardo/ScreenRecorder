@@ -57,7 +57,7 @@ using namespace std;
 class ScreenRecorder
 {
 private:
-	const char *out_filename;
+	string out_filename;
 
 	ofstream log_file; // logger()
 	char errbuf[32];   // debugger()
@@ -100,7 +100,7 @@ private:
 	AVPacket *aout_packet;
 
 public:
-	ScreenRecorder();
+	ScreenRecorder(string out_filename);
 	~ScreenRecorder();
 
 	string getTimestamp();

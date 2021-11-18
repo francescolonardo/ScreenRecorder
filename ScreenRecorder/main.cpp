@@ -13,10 +13,17 @@ void intSignalHandler(int signum)
 
 int main(int argc, char const *argv[])
 {
+	if (argc < 2)
+	{
+		cout << "Missing arguments! | e.g. ./main video.mp4" << endl; // TODO: fix this!
+		return -1;
+	}
+	string out_filename = argv[1];
+
 	// register signal SIGINT (CTRL+C) and signal handler
 	signal(SIGINT, intSignalHandler);
 
-	ScreenRecorder sr;
+	ScreenRecorder sr{out_filename}; // TODO: add all args!
 
 	sr.openInputDeviceVideo();
 	sr.openInputDeviceAudio();
