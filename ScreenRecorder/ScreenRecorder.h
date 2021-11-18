@@ -1,12 +1,12 @@
 #ifndef SCREENRECORDER_H
 #define SCREENRECORDER_H
 
-#if defined(_WIN32) || defined(__CYGWIN__)
-#define PLATFORM_NAME "windows" // Windows (x86 or x64)
-#include <windows.h>
-#elif defined(__linux__)
+#if defined(__linux__)
 #define PLATFORM_NAME "linux" // Linux
 #include <X11/Xlib.h>
+#elif defined(_WIN32) || defined(__CYGWIN__)
+#define PLATFORM_NAME "windows" // Windows (x86 or x64)
+#include <windows.h>
 #elif defined(__APPLE__) && defined(__MACH__)
 #define PLATFORM_NAME "mac" // Apple Mac OS
 #endif
@@ -18,9 +18,9 @@
 #include <cstring>
 #include <math.h>
 #include <string>
-#include <vector>
-#include <csignal>
 #include <regex>
+#include <ctime>
+#include <assert.h>
 
 #define __STDC_CONSTANT_MACROS
 
@@ -47,7 +47,9 @@ extern "C"
 #include "libavutil/file.h"
 #include "libavutil/log.h"
 #include "libavutil/error.h"
+#include "libavutil/audio_fifo.h"
 #include "libswscale/swscale.h"
+#include "libswresample/swresample.h"
 }
 
 using namespace std;
@@ -55,61 +57,69 @@ using namespace std;
 class ScreenRecorder
 {
 private:
-	string screen_device;
-	string mic_device;
-	string screen_url;
-	string mic_url;
-	string out_filename;
+	const char *out_filename;
 
-	AVInputFormat *ain_format;
-	AVOutputFormat *aout_format;
+	ofstream log_file; // logger()
+	char errbuf[32];   // debugger()
+
+	char tmp_str[100];
+	int value;
+	int response;
+
+	// TODO: check if I need all these global variables
+	// video
 	AVInputFormat *vin_format;
-	AVOutputFormat *vout_format;
-
-	AVFormatContext *in_format_context;
-	AVFormatContext *out_format_context;
-
-	AVCodec *ain_codec;
-	AVCodec *aout_codec;
-	AVCodec *vin_codec;
-	AVCodec *vout_codec;
-
-	AVCodecContext *ain_codec_context;
-	AVCodecContext *aout_codec_context;
-	AVCodecContext *vin_codec_context;
-	AVCodecContext *vout_codec_context;
-
-	AVDictionary *in_options;
-	AVDictionary *hdr_options;
-	AVDictionary *out_options;
-
-	AVStream *ain_stream;
-	AVStream *aout_stream;
+	AVFormatContext *vin_format_context;
 	AVStream *vin_stream;
-	AVStream *vout_stream;
-
-	SwsContext *sws_context;
-
-	AVPacket *in_packet;
-	AVPacket *out_packet;
-	AVFrame *in_frame;
-	AVFrame *out_frame;
-
-	int astream_idx;
-	int vstream_idx;
 	AVRational vin_fps;
-	int ret;
+	int vstream_idx;
+	AVCodecContext *vin_codec_context;
+	AVOutputFormat *out_format;			 // extra
+	AVFormatContext *out_format_context; // extra
+	AVStream *vout_stream;
+	AVCodecContext *vout_codec_context;
+	AVPacket *vin_packet;
+	AVFrame *vin_frame;
+	SwsContext *rescaler_context;
+	AVFrame *vout_frame;
+	AVPacket *vout_packet;
+
+	// audio
+	AVInputFormat *ain_format;
+	AVFormatContext *ain_format_context;
+	AVStream *ain_stream;
+	int astream_idx;
+	AVCodecContext *ain_codec_context;
+	AVStream *aout_stream;
+	AVCodecContext *aout_codec_context;
+	AVPacket *ain_packet;
+	AVFrame *ain_frame;
+	SwrContext *resampler_context;
+	AVAudioFifo *a_fifo;
+	AVFrame *aout_frame;
+	AVPacket *aout_packet;
 
 public:
 	ScreenRecorder();
 	~ScreenRecorder();
-	void openInputDevices();
-	void prepareDecoders();
-	void prepareEncoders();
+
+	string getTimestamp();
+	void logger(string str);
+	void debugger(string str, int level, int errnum);
+
+	void openInputDeviceVideo();
+	void openInputDeviceAudio();
+	void prepareDecoderVideo();
+	void prepareDecoderAudio();
+	void prepareEncoderVideo();
+	void prepareEncoderAudio();
 	void prepareOutputFile();
-	void prepareCapture();
-	void captureFrames();
-	void deallocateResources();
+	void prepareCaptureVideo();
+	void prepareCaptureAudio();
+	void captureFramesVideo(bool &sig_ctrl_c);
+	void captureFramesAudio(bool &sig_ctrl_c);
+	void deallocateResourcesVideo();
+	void deallocateResourcesAudio();
 };
 
 #endif
