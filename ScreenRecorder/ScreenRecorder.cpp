@@ -2,15 +2,14 @@
 
 using namespace std;
 
-ScreenRecorder::ScreenRecorder(string out_filename) : out_filename(out_filename)
+ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string out_filename)
+	: area_size(area_size), area_offsets(area_offsets), out_filename(out_filename)
 {
 // OS detection
 #if defined(__linux__)
 #define PLATFORM_NAME "linux" // Linux
-#include <X11/Xlib.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
-#include <windows.h>
 #elif defined(__APPLE__) && defined(__MACH__)
 #define PLATFORM_NAME "mac" // Apple Mac OS
 #endif
@@ -112,28 +111,33 @@ void ScreenRecorder::openInputDeviceVideo()
 		debugger("Unknow screen device\n", AV_LOG_ERROR, 0);
 
 	// getting current display information
+	string screen_number, screen_width, screen_height;
 	string screen_url;
-	int screen_width = 0, screen_height = 0;
 #if defined(__linux__)
-	Display *display = XOpenDisplay(":0");
+	// get current display number
+	screen_number = getenv("DISPLAY");
+	Display *display = XOpenDisplay(screen_number.c_str());
 	if (!display)
 	{
-		debugger("Cannot open display :0\n", AV_LOG_WARNING, 0);
-		display = XOpenDisplay(":1");
-		screen_url = ":1.0+0,0"; // current screen (:1, x=0, y=0)
-		// print display information (:1)
-		debugger("Display detected: :1, ", AV_LOG_INFO, 0);
+		snprintf(tmp_str, sizeof(tmp_str), "Cannot open current display (%s)\n",
+				 screen_number.c_str());
+		debugger(tmp_str, AV_LOG_ERROR, 0);
 	}
-	else
-	{
-		screen_url = ":0.0+0,0"; // current screen (:0, x=0, y=0)
-		// print display information (:0)
-		debugger("Display detected: :0, ", AV_LOG_INFO, 0);
-	}
+	// get current screen's size
 	Screen *screen = DefaultScreenOfDisplay(display);
-	screen_width = screen->width;
-	screen_height = screen->height;
-	debugger(to_string(screen_width) + "x" + to_string(screen_height) + "\n", AV_LOG_INFO, 0);
+	screen_width = to_string(screen->width);
+	screen_height = to_string(screen->height);
+	XCloseDisplay(display);
+
+	// print current display information
+	snprintf(tmp_str, sizeof(tmp_str), "Current display: %s, %sx%s\n",
+			 screen_number.c_str(), screen_width.c_str(), screen_height.c_str());
+	debugger(tmp_str, AV_LOG_INFO, 0);
+
+	// setting screen_url basing on screen_number and area_offests
+	// TODO: add area_size and area_offsets check (towards current screen's size)
+	screen_url = screen_number + ".0+" + area_offsets;
+
 #elif defined(_WIN32) || defined(__CYGWIN__)  // TODO: implement it
 	screen_width = (int)GetSystemMetrics(SM_CXSCREEN);
 	screen_height = (int)GetSystemMetrics(SM_CYSCREEN);
@@ -146,16 +150,23 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	// setting up (video) input options for the demuxer
 	AVDictionary *vin_options = NULL;
-	string video_size = to_string(screen_width) + "x" + to_string(screen_height);
-	value = av_dict_set(&vin_options, "video_size", video_size.c_str(), 0);
+	value = av_dict_set(&vin_options, "video_size", area_size.c_str(), 0);
 	if (value < 0)
 		debugger("Error setting input options (video_size)\n", AV_LOG_ERROR, value);
-	//value = av_dict_set(&vin_options, "framerate", "15", 0);
+	value = av_dict_set(&vin_options, "framerate", "15", 0);
 	if (value < 0)
 		debugger("Error setting input options (framerate)\n", AV_LOG_ERROR, value);
-	//value = av_dict_set(&vin_options, "preset", "ultraslow", 0);
+	/*
+	value = av_dict_set(&vin_options, "preset", "ultraslow", 0);
 	if (value < 0)
 		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
+	*/
+	av_dict_set(&vin_options, "show_region", "1", 0);
+	if (value < 0)
+		debugger("Error setting input options (show_region)\n", AV_LOG_ERROR, value);
+	av_dict_set(&vin_options, "probesize", "30M", 0);
+	if (value < 0)
+		debugger("Error setting input options (probesize)\n", AV_LOG_ERROR, value);
 
 	// opening screen url
 	value = avformat_open_input(&vin_format_context, screen_url.c_str(), vin_format, &vin_options);
