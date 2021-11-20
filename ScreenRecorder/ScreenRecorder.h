@@ -20,7 +20,8 @@
 #include <string>
 #include <regex>
 #include <ctime>
-#include <assert.h>
+#include <thread>
+#include <signal.h>
 
 #define __STDC_CONSTANT_MACROS
 
@@ -58,14 +59,22 @@ class ScreenRecorder
 {
 private:
 	string area_size, area_offsets;
+	string video_fps;
+	bool audio_flag;
 	string out_filename;
 
+	bool sig_ctrl_c;
+	
 	ofstream log_file; // logger()
 	char errbuf[32];   // debugger()
 
 	char tmp_str[100];
 	int value;
 	int response;
+
+	// threads' pointers
+	unique_ptr<thread> capture_video_thrd;
+	unique_ptr<thread> capture_audio_thrd;
 
 	// TODO: check if I need all these global variables
 	// video
@@ -100,10 +109,6 @@ private:
 	AVFrame *aout_frame;
 	AVPacket *aout_packet;
 
-public:
-	ScreenRecorder(string area_size, string area_offsets, string out_filename);
-	~ScreenRecorder();
-
 	string getTimestamp();
 	void logger(string str);
 	void debugger(string str, int level, int errnum);
@@ -121,6 +126,11 @@ public:
 	void captureFramesAudio(bool &sig_ctrl_c);
 	void deallocateResourcesVideo();
 	void deallocateResourcesAudio();
+
+public:
+	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
+	~ScreenRecorder();
+	void record(bool &sig_ctrl_c);
 };
 
 #endif

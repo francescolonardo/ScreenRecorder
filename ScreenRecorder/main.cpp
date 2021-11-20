@@ -1,11 +1,7 @@
-#include <signal.h>
 #include "ScreenRecorder.h"
-#include <thread>
-
-using namespace std;
 
 bool sig_ctrl_c = false;
-void intSignalHandler(int signum)
+void sigIntHandler(int signum)
 {
 	cout << "\t-> Interrupt signal (CTRL+C) received" << endl;
 	sig_ctrl_c = true;
@@ -15,40 +11,24 @@ int main(int argc, char const *argv[])
 {
 	try
 	{
-		if (argc < 4)
+		if (argc < 6)
 		{
-			cout << "Missing arguments! | e.g. ./main 320x240 100,50 video.mp4" << endl; // TODO: improve this!
+			cout << "Missing arguments! | ./main widthxheight x_offset,y_offset video_fps audio_flag out_filename" << endl; // TODO: improve this!
 			return -1;
 		}
 		// TODO: add arguments' checks
 		string area_size = argv[1], area_offsets = argv[2];
-		string out_filename = argv[3];
+		string video_fps = argv[3];
+		bool audio_flag = atoi(argv[4]) == 1 ? true : false;
+		string out_filename = argv[5];
+
+		//printf("Args main: %s %s %s %d %s\n", area_size.c_str(), area_offsets.c_str(), video_fps.c_str(), audio_flag, out_filename.c_str());
 
 		// register signal SIGINT (CTRL+C) and signal handler
-		signal(SIGINT, intSignalHandler);
+		signal(SIGINT, sigIntHandler);
 
-		ScreenRecorder sr{area_size, area_offsets, out_filename}; // TODO: add all args!
-
-		sr.openInputDeviceVideo();
-		sr.openInputDeviceAudio();
-
-		sr.prepareDecoderVideo();
-		sr.prepareDecoderAudio();
-
-		sr.prepareEncoderVideo();
-		sr.prepareEncoderAudio();
-
-		sr.prepareOutputFile();
-
-		sr.prepareCaptureVideo();
-		sr.prepareCaptureAudio();
-
-		//sr.captureFramesVideo(sig_ctrl_c);
-		//sr.captureFramesAudio(sig_ctrl_c);
-		thread thrd_video(&ScreenRecorder::captureFramesVideo, &sr, ref(sig_ctrl_c));
-		//thread thrd_audio(&ScreenRecorder::captureFramesAudio, &sr, ref(sig_ctrl_c));
-		thrd_video.join();
-		//thrd_audio.join();
+		ScreenRecorder sr{area_size, area_offsets, video_fps, audio_flag, out_filename}; // TODO: add all args!
+		sr.record(sig_ctrl_c);
 	}
 	catch (const std::exception &ex)
 	{
