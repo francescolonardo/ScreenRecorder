@@ -11,6 +11,11 @@
 #define PLATFORM_NAME "mac" // Apple Mac OS
 #endif
 
+#define STATELESS 0
+#define RECORDING 1
+#define PAUSED 2
+#define STOPPED 3
+
 #include <iostream>
 #include <cstdio>
 #include <cstdlib>
@@ -20,8 +25,13 @@
 #include <string>
 #include <regex>
 #include <ctime>
+#include <queue>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <signal.h>
+#include <termios.h>
+#include <unistd.h>
 
 #define __STDC_CONSTANT_MACROS
 
@@ -58,13 +68,21 @@ using namespace std;
 class ScreenRecorder
 {
 private:
+	uint8_t rec_status;
+	condition_variable rec_status_cv;
+	mutex rec_status_mtx;
+	queue<AVPacket *> avin_packets_q;
+	mutex q_mtx;
+	mutex write_frame_mtx;
+	struct termios old_tio, new_tio;
+
 	string area_size, area_offsets;
 	string video_fps;
 	bool audio_flag;
 	string out_filename;
 
 	bool sig_ctrl_c;
-	
+
 	ofstream log_file; // logger()
 	char errbuf[32];   // debugger()
 
@@ -73,6 +91,7 @@ private:
 	int response;
 
 	// threads' pointers
+	unique_ptr<thread> change_rec_status_thrd;
 	unique_ptr<thread> capture_video_thrd;
 	unique_ptr<thread> capture_audio_thrd;
 
@@ -82,7 +101,8 @@ private:
 	AVFormatContext *vin_format_context;
 	AVStream *vin_stream;
 	AVRational vin_fps;
-	int vstream_idx;
+	int vin_stream_idx;
+	int vout_stream_idx;
 	AVCodecContext *vin_codec_context;
 	AVOutputFormat *out_format;			 // extra
 	AVFormatContext *out_format_context; // extra
@@ -98,7 +118,8 @@ private:
 	AVInputFormat *ain_format;
 	AVFormatContext *ain_format_context;
 	AVStream *ain_stream;
-	int astream_idx;
+	int ain_stream_idx;
+	int aout_stream_idx;
 	AVCodecContext *ain_codec_context;
 	AVStream *aout_stream;
 	AVCodecContext *aout_codec_context;
@@ -119,9 +140,14 @@ private:
 	void prepareDecoderAudio();
 	void prepareEncoderVideo();
 	void prepareEncoderAudio();
-	void prepareOutputFile();
 	void prepareCaptureVideo();
 	void prepareCaptureAudio();
+	void prepareOutputFile();
+
+	void pushPacketsInQueue();
+
+	void changeRecStatus(bool &sig_ctrl_c);
+
 	void captureFramesVideo(bool &sig_ctrl_c);
 	void captureFramesAudio(bool &sig_ctrl_c);
 	void deallocateResourcesVideo();
