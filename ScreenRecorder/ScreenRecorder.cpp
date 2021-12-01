@@ -2,7 +2,6 @@
 
 ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename) : area_size(area_size), area_offsets(area_offsets), video_fps(video_fps), audio_flag(audio_flag), out_filename(out_filename), sig_ctrl_c(false), rec_status(STATELESS)
 {
-
 	// -------------- termios ------------- //
 	// get the current terminal settings for stdin
 	tcgetattr(STDIN_FILENO, &old_tio);
@@ -15,7 +14,6 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 
 	// set the new settings immediately
 	tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
-
 	// -------------- /termios ------------- //
 
 // OS detection
@@ -83,6 +81,7 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 		prepareEncoderAudio();
 		prepareCaptureAudio();
 	}
+
 	// output init
 	prepareOutputFile();
 }
@@ -90,9 +89,12 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 ScreenRecorder::~ScreenRecorder()
 {
 	capture_video_thrd.get()->join();
+	elaborate_video_thrd.get()->join();
 	if (audio_flag)
+	{
 		capture_audio_thrd.get()->join();
-
+		elaborate_audio_thrd.get()->join();
+	}
 	change_rec_status_thrd.get()->join();
 
 	av_write_trailer(out_format_context);
@@ -115,14 +117,393 @@ void ScreenRecorder::record(bool &sig_ctrl_c)
 {
 	rec_status = RECORDING;
 
+	/*
 	capture_video_thrd = make_unique<thread>([this, &sig_ctrl_c]()
 											 { captureFramesVideo(sig_ctrl_c); });
 	if (audio_flag)
 		capture_audio_thrd = make_unique<thread>([this, &sig_ctrl_c]()
 												 { captureFramesAudio(sig_ctrl_c); });
+	*/
 
-	change_rec_status_thrd = make_unique<thread>([this, &sig_ctrl_c]()
-												 { changeRecStatus(sig_ctrl_c); });
+	// capture av frames
+	capture_video_thrd = make_unique<thread>([this]()
+											 { capturePacketsVideo(); });
+	if (audio_flag)
+		capture_audio_thrd = make_unique<thread>([this]()
+												 { capturePacketsAudio(); });
+	// elaborate av frames
+	elaborate_video_thrd = make_unique<thread>([this]()
+											   { elaboratePacketsVideo(); });
+	if (audio_flag)
+		elaborate_audio_thrd = make_unique<thread>([this]()
+												   { elaboratePacketsAudio(); });
+
+	change_rec_status_thrd = make_unique<thread>([this]()
+												 { changeRecStatus(); });
+}
+
+void ScreenRecorder::capturePacketsVideo()
+{
+	//unique_lock<mutex> ul(rec_status_mtx);
+
+	AVPacket *tmp_vin_packet;
+	while (rec_status != STOPPED)
+	{
+		//rec_status_cv.wait(ul, [this]() { return rec_status == RECORDING; });
+
+		tmp_vin_packet = av_packet_alloc();
+		if (av_read_frame(vin_format_context, tmp_vin_packet) >= 0)
+		{
+			if (rec_status == PAUSED)
+			{
+				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
+				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
+			}
+			else
+			{
+				vin_packets_q.push(tmp_vin_packet);
+				vin_packets_q_cv.notify_one(); // notify elaboratePacketsVideo()
+			}
+		}
+
+		cout << "Video queue size:" << vin_packets_q.size() << endl;
+	}
+}
+
+void ScreenRecorder::capturePacketsAudio()
+{
+	//unique_lock<mutex> ul(rec_status_mtx);
+
+	AVPacket *tmp_ain_packet;
+	while (rec_status != STOPPED)
+	{
+		//rec_status_cv.wait(ul, [this]() { return rec_status == RECORDING; });
+
+		tmp_ain_packet = av_packet_alloc();
+		if (av_read_frame(ain_format_context, tmp_ain_packet) >= 0)
+		{
+			if (rec_status == PAUSED)
+			{
+				av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
+				av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
+			}
+			else
+			{
+				ain_packets_q.push(tmp_ain_packet);
+				ain_packets_q_cv.notify_one(); // notify elaboratePacketsAudio()
+			}
+		}
+
+		cout << "Audio queue size:" << ain_packets_q.size() << endl;
+	}
+}
+
+void ScreenRecorder::elaboratePacketsVideo()
+{
+	unique_lock<mutex> ul(vin_packets_q_mtx);
+
+	// let's feed our input packet from the input stream
+	// until it has packets or until user hits CTRL+C
+	uint64_t ts = 0;
+
+	while (rec_status != STOPPED || !vin_packets_q.empty())
+	{
+		vin_packets_q_cv.wait(ul, [this]()
+							  { return !vin_packets_q.empty(); });
+
+		vin_packet = vin_packets_q.front();
+		vin_packets_q.pop();
+
+		cout << "Video packet popped (video queue size: " << vin_packets_q.size() << ")" << endl;
+
+		// -------------------------------- transcode video ------------------------------ //
+
+		// let's send the input (compressed) packet to the video decoder
+		// through the video input codec context
+		response = avcodec_send_packet(vin_codec_context, vin_packet);
+		cout << "Video test1: " << response << endl;
+		if (response < 0)
+			debugger("Error sending input (compressed) packet to the video decoder\n", AV_LOG_ERROR, response);
+
+		av_packet_unref(vin_packet); // wipe input packet (video) buffer data
+		av_packet_free(&vin_packet); // free input packet (video) buffer data
+
+		while (response == 0)
+		{
+			// and let's (try to) receive the input uncompressed frame from the video decoder
+			// through same codec context
+			response = avcodec_receive_frame(vin_codec_context, vin_frame);
+			cout << "Video test2: " << response << endl;
+			if (response == AVERROR(EAGAIN)) // try again
+				break;
+			else if (response < 0)
+				debugger("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
+
+			// --------------------------------- encode video -------------------------------- //
+
+			// convert (scale) from BGR to YUV
+			sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
+
+			// setting (video) output frame pts
+			vout_frame->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
+
+			// useless (I think): vout_frame->pict_type = AV_PICTURE_TYPE_NONE;
+
+			av_frame_unref(vin_frame); // wipe input frame (video) buffer data
+
+			// let's send the uncompressed output frame to the video encoder
+			// through the video output codec context
+			response = avcodec_send_frame(vout_codec_context, vout_frame);
+			cout << "Video test3: " << response << endl;
+			while (response == 0)
+			{
+				// and let's (try to) receive the output packet (compressed) from the video encoder
+				// through the same codec context
+				response = avcodec_receive_packet(vout_codec_context, vout_packet);
+				cout << "Video test4: " << response << endl;
+				if (response == AVERROR(EAGAIN)) // try again
+					break;
+				else if (response < 0)
+					debugger("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
+
+				vout_packet->stream_index = vout_stream_idx; // vout_stream_idx = 0
+
+				// ----------------------- synchronize (video) ouput packet ----------------------- //
+
+				// adjusting output packet timestamps (video)
+				//av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
+				vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base,
+
+				// print output packet information (video)
+				// FIXME: fix this!
+				printf(" - Video output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
+					   vout_packet->pts, vout_packet->dts, vout_packet->duration, vout_packet->size);
+
+				// ----------------------- /synchronize (video) ouput packet ---------------------- //
+
+				// write frames in output packet (video)
+				av_write_frame_mtx.lock();
+				response = av_write_frame(out_format_context, vout_packet);
+				av_write_frame_mtx.unlock();
+				if (response < 0)
+					debugger("Error writing video output frame\n", AV_LOG_ERROR, response);
+
+				ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
+			}
+			av_packet_unref(vout_packet); // wipe output packet (video) buffer data
+										  //av_frame_unref(vout_frame);	  // wipe output frame (video) buffer data
+
+			// -------------------------------- /encode video -------------------------------- //
+		}
+		av_frame_unref(vin_frame); // wipe input frame (video) buffer data
+
+		// ------------------------------- /transcode video ------------------------------ //
+	}
+}
+
+void ScreenRecorder::elaboratePacketsAudio()
+{
+	unique_lock<mutex> ul(ain_packets_q_mtx);
+
+	uint64_t ts = 1024; // FIXME: fix this!
+	//bool last_frame = false;
+	// let's feed our input packet from the input stream
+	// until it has packets or until user hits CTRL+C
+	while (rec_status != STOPPED || !ain_packets_q.empty())
+	{
+		ain_packets_q_cv.wait(ul, [this]()
+							  { return !ain_packets_q.empty(); });
+
+		ain_packet = ain_packets_q.front();
+		ain_packets_q.pop();
+
+		cout << "Audio packet popped (audio queue size: " << ain_packets_q.size() << ")" << endl;
+
+		// -------------------------------- transcode audio ------------------------------- //
+
+		// let's send the (audio) input (compressed) packet to the audio decoder
+		// through the audio input codec context
+		response = avcodec_send_packet(ain_codec_context, ain_packet);
+		cout << "Audio test1: " << response << endl;
+		if (response < 0)
+			debugger("Error sending audio input (compressed) packet to the audio decoder\n", AV_LOG_ERROR, response);
+
+		av_packet_unref(ain_packet); // wipe input packet (audio) buffer data // TODO: check this!
+		av_packet_free(&ain_packet); // free input packet (audio) buffer data
+
+		while (response == 0)
+		{
+			// and let's (try to) receive the (audio) input uncompressed frame from the audio decoder
+			// through same codec context
+			response = avcodec_receive_frame(ain_codec_context, ain_frame);
+			cout << "Audio test2: " << response << endl;
+			if (response == AVERROR(EAGAIN)) // try again
+				break;
+			else if (response < 0)
+				debugger("Error receiving audio input frame from the audio decoder\n", AV_LOG_ERROR, response);
+
+			//cout << "Input frame (nb_samples): " << ain_frame->nb_samples << endl;
+			//cout << "Output codec context (frame size): " << aout_codec_context->frame_size << endl;
+
+			// --------------------------------- encode audio --------------------------------- //
+
+			// allocate an array of as many pointers as audio channels (in audio output codec context)
+			// each of one will point to the (converted) audio input samples of the corresponding channel
+			// (a temporary storage for the (converted) audio input samples)
+			uint8_t **a_converted_samples = NULL;
+			value = av_samples_alloc_array_and_samples(&a_converted_samples, NULL, aout_codec_context->channels, ain_frame->nb_samples, aout_codec_context->sample_fmt, 0);
+			if (value < 0)
+				debugger("Failed to allocate (converted) audio input samples\n", AV_LOG_ERROR, value);
+
+			// convert from S16 to FLTP
+			value = swr_convert(resampler_context, a_converted_samples, ain_frame->nb_samples, (const uint8_t **)ain_frame->extended_data, ain_frame->nb_samples);
+			if (value < 0)
+				debugger("Failed to convert the audio input samples\n", AV_LOG_ERROR, value);
+
+			// make the FIFO buffer as large as it needs to be
+			// to hold both, the old and the new (converted) audio input samples
+			value = av_audio_fifo_realloc(a_fifo, av_audio_fifo_size(a_fifo) + ain_frame->nb_samples);
+			if (value < 0)
+				debugger("Failed to reallocate memory for the (converted) audio input samples fifo buffer\n", AV_LOG_ERROR, AVERROR(ENOMEM));
+
+			// add the (converted) audio input samples to the FIFO buffer
+			value = av_audio_fifo_write(a_fifo, (void **)a_converted_samples, ain_frame->nb_samples);
+			if (value < 0)
+				debugger("Failed to write data to (converted) audio input samples fifo buffer\n", AV_LOG_ERROR, 0);
+
+			av_frame_unref(ain_frame); // wipe input frame (audio) buffer data // TODO: check this!
+
+			// free the (converted) audio input samples array
+			if (a_converted_samples)
+				av_freep(&a_converted_samples[0]);
+
+			// if we have enough samples for the encoder, we encode them
+			// or
+			// if we stop the recording, the remaining samples are sent to the encoder
+			//while (av_audio_fifo_size(a_fifo) >= aout_codec_context->frame_size || (rec_status == PAUSED && av_audio_fifo_size(a_fifo) > 0))
+			while (av_audio_fifo_size(a_fifo) >= aout_codec_context->frame_size)
+			{
+				// depending on the (while) case
+				//const int aout_frame_size = FFMIN(aout_codec_context->frame_size, av_audio_fifo_size(a_fifo));
+				int aout_frame_size = aout_codec_context->frame_size;
+
+				// read from the (converted) audio input samples fifo buffer
+				// as many samples as required to fill the audio output frame
+				value = av_audio_fifo_read(a_fifo, (void **)aout_frame->data, aout_frame_size);
+				if (value < 0)
+					debugger("Failed to read data from the audio samples fifo buffer\n", AV_LOG_ERROR, value);
+
+				// adjusting audio output frame pts/dts
+				// based on its samples number
+				aout_frame->pts = ts;
+				ts += aout_frame->nb_samples;
+
+				// let's send the uncompressed (audio) output frame to the audio encoder
+				// through the audio output codec context
+				response = avcodec_send_frame(aout_codec_context, aout_frame);
+				cout << "Audio test3: " << response << endl;
+				while (response == 0)
+				{
+					if (rec_status == PAUSED)
+						cout << "TEST AUDIO" << endl;
+
+					// and let's (try to) receive the output packet (compressed) from the audio encoder
+					// through the same codec context
+					response = avcodec_receive_packet(aout_codec_context, aout_packet);
+					cout << "Audio test4: " << response << endl;
+					if (response == AVERROR(EAGAIN)) // try again
+						break;
+					else if (response < 0)
+						debugger("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
+
+					aout_packet->stream_index = aout_stream_idx; // aout_stream_idx = 1
+
+					// ----------------------- synchronize (audio) output packet ---------------------- //
+
+					// adjusting output packet pts/dts/duration
+					av_packet_rescale_ts(aout_packet, aout_codec_context->time_base, aout_stream->time_base); // ???
+
+					// TODO: check this!
+					/*
+					if (aout_packet->pts < 0)
+						aout_packet->pts = aout_packet->dts = 0;
+					*/
+
+					// print output packet information (audio)
+					// FIXME: fix this!
+					printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
+						   aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
+
+					// ---------------------- /synchronize (audio) output packet ---------------------- //
+
+					// write frames in output packet (audio)
+					av_write_frame_mtx.lock();
+					response = av_interleaved_write_frame(out_format_context, aout_packet);
+					av_write_frame_mtx.unlock();
+					if (response < 0)
+						debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
+
+					av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
+
+					/*
+					// if we are at the end ???
+					if (sig_ctrl_c)
+					{
+						// flush the encoder as it may have delayed frames ???
+						while (!last_frame)
+						{
+
+							// let's send the uncompressed (audio) output frame to the audio encoder
+							// through the audio output codec context
+							response = avcodec_send_frame(aout_codec_context, NULL);
+							while (!last_frame)
+							{
+								// and let's (try to) receive the output packet (compressed) from the audio encoder
+								// through the same codec context
+								response = avcodec_receive_packet(aout_codec_context, aout_packet);
+								if (response == AVERROR(EAGAIN)) // try again
+									break;
+								else if (response == AVERROR_EOF)
+								{
+									last_frame = true;
+									break;
+								}
+								else if (response < 0)
+									debugger("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
+
+								aout_packet->stream_index = astream_idx;
+
+								// ----------------------- synchronize (audio) output packet ---------------------- //
+
+								// adjusting output packet pts/dts/duration
+
+								// print output packet information (audio)
+								// FIXME: fix this!
+								printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
+									aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
+
+								// ---------------------- /synchronize (audio) output packet ---------------------- //
+
+								// write frames in output packet (audio)
+								response = av_interleaved_write_frame(out_format_context, aout_packet);
+								if (response < 0)
+									debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
+
+								av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
+							}
+						}
+					}
+					*/
+				}
+				av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
+											  //av_frame_unref(aout_frame);	  // wipe output frame (audio) buffer data
+			}
+			// --------------------------------- /encode audio -------------------------------- //
+		}
+		av_frame_unref(ain_frame); // wipe input frame (audio) buffer data
+
+		// ------------------------------- /transcode audio ------------------------------- //
+	}
 }
 
 string ScreenRecorder::getTimestamp()
@@ -223,7 +604,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	if (value < 0)
 		debugger("Error setting video input options (framerate)\n", AV_LOG_ERROR, value);
 	/*
-	value = av_dict_set(&vin_options, "preset", "ultrafast", 0);
+	value = av_dict_set(&vin_options, "preset", "medium", 0);
 	if (value < 0)
 		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
 	*/
@@ -440,15 +821,14 @@ void ScreenRecorder::prepareEncoderVideo()
 	debugger(tmp_str, AV_LOG_INFO, 0);
 
 	// setting up (video) output codec context properties
-	// useless: vout_codec_context->codec_id = out_format_context->video_codec; // AV_CODEC_ID_H264; AV_CODEC_ID_MPEG4; AV_CODEC_ID_MPEG1VIDEO
-	// useless: vout_codec_context->codec_type = AVMEDIA_TYPE_VIDEO;
+	// vout_codec_context->codec_id = out_format_context->video_codec; // AV_CODEC_ID_H264; AV_CODEC_ID_MPEG4; AV_CODEC_ID_MPEG1VIDEO // useless
+	//vout_codec_context->codec_type = AVMEDIA_TYPE_VIDEO; // useless
 	vout_codec_context->width = vin_codec_context->width;
 	vout_codec_context->height = vin_codec_context->height;
 	vout_codec_context->pix_fmt = vout_codec->pix_fmts ? vout_codec->pix_fmts[0] : AV_PIX_FMT_YUV420P;
-	vout_codec_context->framerate = vin_codec_context->framerate;
 
 	// FIXME: fix this!
-	//vout_codec_context->bit_rate = 80 * 1000; // ??? kbps
+	//vout_codec_context->bit_rate = 40 * 1000; // ??? kbps
 	//vout_stream->codecpar->bit_rate = 400 * 1000; // TODO: check this!
 
 	// print (video) output codec context properties
@@ -456,8 +836,12 @@ void ScreenRecorder::prepareEncoderVideo()
 	printf("Video output codec context: pix_fmt=%s\n", av_get_pix_fmt_name(vout_codec_context->pix_fmt));
 
 	// other (video) output codec context properties
-	//vout_codec_context->max_b_frames = 2; // I think we have just I frames (useless)
-	//vout_codec_context->gop_size = 12;	  // I think we have just I frames (useless)
+	/*
+	vout_codec_context->max_b_frames = 2; // I think we have just I frames (useless)
+	vout_codec_context->gop_size = 12;	  // I think we have just I frames (useless)
+	vout_codec_context->qmin = 5;
+	vout_codec_context->qmax = 10;
+	*/
 
 	// setting up (video) output codec context timebase/framerate
 	vout_codec_context->time_base.num = 1;
@@ -472,10 +856,9 @@ void ScreenRecorder::prepareEncoderVideo()
 	AVDictionary *vout_options = NULL;
 	if (vout_codec_context->codec_id == AV_CODEC_ID_H264 || vout_codec_context->codec_id == AV_CODEC_ID_H265) //H.264 or H.265
 	{
-		av_dict_set(&vout_options, "preset", "ultrafast", 0); // or medium ???
+		//av_dict_set(&vout_options, "preset", "medium", 0); // or slow ???
 		av_dict_set(&vout_options, "tune", "zerolatency", 0);
 
-		// TODO: check these!
 		/*
 		av_opt_set(vout_codec_context, "preset", "ultrafast", 0);
 		av_opt_set(vout_codec_context, "tune", "zerolatency", 0);
@@ -668,9 +1051,8 @@ void ScreenRecorder::prepareCaptureAudio()
 	// av_frame_get_buffer(...) fill AVFrame.data and AVFrame.buf arrays and, if necessary, allocate and fill AVFrame.extended_data and AVFrame.extended_buf
 	aout_frame->nb_samples = aout_codec_context->frame_size;
 	aout_frame->channel_layout = aout_codec_context->channel_layout;
-	aout_frame->format = static_cast<int>(aout_codec_context->sample_fmt);
+	aout_frame->format = aout_codec_context->sample_fmt;
 	aout_frame->sample_rate = aout_codec_context->sample_rate;
-	//aout_frame->channels = aout_codec_context->channels; // TODO: check this!
 	value = av_frame_get_buffer(aout_frame, 0);
 	if (value < 0)
 		debugger("Failed to allocate a buffer for the audio output frame\n", AV_LOG_ERROR, value);
@@ -726,38 +1108,6 @@ void ScreenRecorder::prepareOutputFile()
 	cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ capture ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 }
 
-void ScreenRecorder::changeRecStatus(bool &sig_ctrl_c)
-{
-	unsigned char pressed_char;
-
-	while (rec_status != STOPPED)
-	{
-		do
-		{
-			pressed_char = getchar();
-			//printf("%d ", pressed_char);
-		} while (pressed_char != 'p' && pressed_char != 's' && pressed_char != 'c');
-
-		if (pressed_char == 'p')
-		{
-			rec_status = PAUSED;
-			cout << "PAUSED" << endl;
-		}
-		else if (pressed_char == 's')
-		{
-			rec_status = STOPPED;
-			cout << "STOPPED" << endl;
-		}
-		else if (pressed_char == 'c')
-		{
-			rec_status = RECORDING;
-			cout << "RECORDING" << endl;
-		}
-
-		rec_status_cv.notify_all();
-	}
-}
-
 void ScreenRecorder::captureFramesVideo(bool &sig_ctrl_c)
 {
 	//unique_lock<mutex> ul(rec_status_mtx);
@@ -779,107 +1129,114 @@ void ScreenRecorder::captureFramesVideo(bool &sig_ctrl_c)
 			//rec_status_cv.wait(ul);
 			continue;
 		}
-		while (rec_status == RECORDING && av_read_frame(vin_format_context, vin_packet) >= 0)
+		else if (rec_status == RECORDING)
 		{
-
-			// -------------------------------- transcode video ------------------------------ //
-
-			// let's send the input (compressed) packet to the video decoder
-			// through the video input codec context
-			response = avcodec_send_packet(vin_codec_context, vin_packet);
-			if (response < 0)
-				debugger("Error sending input (compressed) packet to the video decoder\n", AV_LOG_ERROR, response);
-
-			av_packet_unref(vin_packet); // wipe input packet (video) buffer data
-
-			while (response >= 0)
+			if (av_read_frame(vin_format_context, vin_packet) >= 0)
 			{
-				// and let's (try to) receive the input uncompressed frame from the video decoder
-				// through same codec context
-				response = avcodec_receive_frame(vin_codec_context, vin_frame);
-				if (response == AVERROR(EAGAIN)) // try again
-					break;
-				else if (response < 0)
-					debugger("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
-
-				// --------------------------------- encode video -------------------------------- //
-
-				// convert (scale) from BGR to YUV
-				sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
-
-				// copying (video) input frame information to (video) output frame
-				//av_frame_copy(vout_frame, vin_frame);
-				//av_frame_copy_props(vout_frame, vin_frame);
-				//vout_frame->pts = vin_frame->pts;
-				//vout_frame->pts = av_rescale_q(vout_frame->pts, vin_stream->time_base, vout_codec_context->time_base);
-				vout_frame->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
-
-				// useless (I think): vout_frame->pict_type = AV_PICTURE_TYPE_NONE;
-
-				av_frame_unref(vin_frame); // wipe input frame (video) buffer data
-
 				/*
-				// printing output frame info
-				if (vin_codec_context->frame_number == 1)
-					cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output frame ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-				// FIXME: fix this!
-				printf("Output frame (video) info: #%d (format=%s, type=%c): pts=%ld [dts=%ld], pts_time=%ld\n",
-					vin_codec_context->frame_number,
-					av_get_pix_fmt_name(static_cast<AVPixelFormat>(vout_frame->format)),
-					av_get_picture_type_char(vout_frame->pict_type),
-					vout_frame->pts,
-					vout_frame->pkt_dts,
-					vout_frame->pts * vout_stream->time_base.num / vout_stream->time_base.den);
+				av_sync = true;
+				av_sync_cv.notify_one();
 				*/
 
-				// let's send the uncompressed output frame to the video encoder
-				// through the video output codec context
-				response = avcodec_send_frame(vout_codec_context, vout_frame);
+				// -------------------------------- transcode video ------------------------------ //
+
+				// let's send the input (compressed) packet to the video decoder
+				// through the video input codec context
+				response = avcodec_send_packet(vin_codec_context, vin_packet);
+				if (response < 0)
+					debugger("Error sending input (compressed) packet to the video decoder\n", AV_LOG_ERROR, response);
+
+				av_packet_unref(vin_packet); // wipe input packet (video) buffer data
+
 				while (response >= 0)
 				{
-					// and let's (try to) receive the output packet (compressed) from the video encoder
-					// through the same codec context
-					response = avcodec_receive_packet(vout_codec_context, vout_packet);
+					// and let's (try to) receive the input uncompressed frame from the video decoder
+					// through same codec context
+					response = avcodec_receive_frame(vin_codec_context, vin_frame);
 					if (response == AVERROR(EAGAIN)) // try again
 						break;
 					else if (response < 0)
-						debugger("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
+						debugger("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
 
-					vout_packet->stream_index = vout_stream_idx; // vout_stream_idx = 0
+					// --------------------------------- encode video -------------------------------- //
 
-					// ----------------------- synchronize (video) ouput packet ----------------------- //
+					// convert (scale) from BGR to YUV
+					sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
 
-					// adjusting output packet timestamps (video)
-					//av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
+					// copying (video) input frame information to (video) output frame
+					//av_frame_copy(vout_frame, vin_frame);
+					//av_frame_copy_props(vout_frame, vin_frame);
+					//vout_frame->pts = vin_frame->pts;
+					//vout_frame->pts = av_rescale_q(vout_frame->pts, vin_stream->time_base, vout_codec_context->time_base);
+					vout_frame->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
 
-					//cout << "TEST 2: " << vin_stream->time_base.num << "/" << vin_stream->time_base.den << ", " << vout_stream->time_base.num << "/" << vout_stream->time_base.den << endl;
-					vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base, vin_stream->time_base);
-					//vout_packet->pts = vout_packet->dts = av_rescale_q(vout_packet->pts, vout_codec_context->time_base, vout_stream->time_base);
+					// useless (I think): vout_frame->pict_type = AV_PICTURE_TYPE_NONE;
 
-					// print output packet information (video)
-					// FIXME: fix this!
-					printf(" - Video output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
-						   vout_packet->pts, vout_packet->dts, vout_packet->duration, vout_packet->size);
+					av_frame_unref(vin_frame); // wipe input frame (video) buffer data
 
-					// ----------------------- /synchronize (video) ouput packet ---------------------- //
+					/*
+						// printing output frame info
+						if (vin_codec_context->frame_number == 1)
+							cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output frame ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+						// FIXME: fix this!
+						printf("Output frame (video) info: #%d (format=%s, type=%c): pts=%ld [dts=%ld], pts_time=%ld\n",
+							vin_codec_context->frame_number,
+							av_get_pix_fmt_name(static_cast<AVPixelFormat>(vout_frame->format)),
+							av_get_picture_type_char(vout_frame->pict_type),
+							vout_frame->pts,
+							vout_frame->pkt_dts,
+							vout_frame->pts * vout_stream->time_base.num / vout_stream->time_base.den);
+						*/
 
-					// write frames in output packet (video)
-					write_frame_mtx.lock();
-					response = av_interleaved_write_frame(out_format_context, vout_packet);
-					write_frame_mtx.unlock();
-					if (response < 0)
-						debugger("Error writing video output frame\n", AV_LOG_ERROR, response);
+					// let's send the uncompressed output frame to the video encoder
+					// through the video output codec context
+					response = avcodec_send_frame(vout_codec_context, vout_frame);
+					while (response >= 0)
+					{
+						// and let's (try to) receive the output packet (compressed) from the video encoder
+						// through the same codec context
+						response = avcodec_receive_packet(vout_codec_context, vout_packet);
+						if (response == AVERROR(EAGAIN)) // try again
+							break;
+						else if (response < 0)
+							debugger("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
 
-					ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
+						vout_packet->stream_index = vout_stream_idx; // vout_stream_idx = 0
+
+						// ----------------------- synchronize (video) ouput packet ----------------------- //
+
+						// adjusting output packet timestamps (video)
+						//av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
+
+						//cout << "TEST 2: " << vin_stream->time_base.num << "/" << vin_stream->time_base.den << ", " << vout_stream->time_base.num << "/" << vout_stream->time_base.den << endl;
+						vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base, vin_stream->time_base);
+						//vout_packet->pts = vout_packet->dts = av_rescale_q(vout_packet->pts, vout_codec_context->time_base, vout_stream->time_base);
+
+						// print output packet information (video)
+						// FIXME: fix this!
+						printf(" - Video output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
+							   vout_packet->pts, vout_packet->dts, vout_packet->duration, vout_packet->size);
+
+						// ----------------------- /synchronize (video) ouput packet ---------------------- //
+
+						// write frames in output packet (video)
+						av_write_frame_mtx.lock();
+						response = av_write_frame(out_format_context, vout_packet);
+						av_write_frame_mtx.unlock();
+						if (response < 0)
+							debugger("Error writing video output frame\n", AV_LOG_ERROR, response);
+
+						ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
+					}
+					av_packet_unref(vout_packet); // wipe output packet (video) buffer data
+												  //av_frame_unref(vout_frame);	  // wipe output frame (video) buffer data
+
+					// -------------------------------- /encode video -------------------------------- //
 				}
-				av_packet_unref(vout_packet); // wipe output packet (video) buffer data
-											  //av_frame_unref(vout_frame);	  // wipe output frame (video) buffer data
+				av_frame_unref(vin_frame); // wipe input frame (video) buffer data
 
-				// -------------------------------- /encode video -------------------------------- //
+				// ------------------------------- /transcode video ------------------------------ //
 			}
-			av_frame_unref(vin_frame); // wipe input frame (video) buffer data
-
-			// ------------------------------- /transcode video ------------------------------ //
 		}
 	}
 }
@@ -887,9 +1244,10 @@ void ScreenRecorder::captureFramesVideo(bool &sig_ctrl_c)
 void ScreenRecorder::captureFramesAudio(bool &sig_ctrl_c)
 {
 	//unique_lock<mutex> ul(rec_status_mtx);
+	unique_lock<mutex> av_sync_ul(av_sync_mtx);
 
 	uint64_t ts = 1024; // FIXME: fix this!
-	bool last_frame = false;
+	//bool last_frame = false;
 	// let's feed our input packet from the input stream
 	// until it has packets or until user hits CTRL+C
 	while (!sig_ctrl_c) // && !last_frame
@@ -906,182 +1264,230 @@ void ScreenRecorder::captureFramesAudio(bool &sig_ctrl_c)
 			//rec_status_cv.wait(ul);
 			continue;
 		}
-		while (rec_status == RECORDING && av_read_frame(ain_format_context, ain_packet) >= 0) // && !last_frame
+		else if (rec_status == RECORDING)
 		{
-			// -------------------------------- transcode audio ------------------------------- //
 
-			// let's send the (audio) input (compressed) packet to the audio decoder
-			// through the audio input codec context
-			response = avcodec_send_packet(ain_codec_context, ain_packet);
-			if (response < 0)
-				debugger("Error sending audio input (compressed) packet to the audio decoder\n", AV_LOG_ERROR, response);
-
-			av_packet_unref(ain_packet); // wipe input packet (audio) buffer data
-
-			while (response >= 0)
+			if (av_read_frame(ain_format_context, ain_packet) >= 0) // && !last_frame
 			{
-				// and let's (try to) receive the (audio) input uncompressed frame from the audio decoder
-				// through same codec context
-				response = avcodec_receive_frame(ain_codec_context, ain_frame);
-				if (response == AVERROR(EAGAIN)) // try again
-					break;
-				else if (response < 0)
-					debugger("Error receiving audio input frame from the audio decoder\n", AV_LOG_ERROR, response);
+				/*
+				av_sync_cv.wait(av_sync_ul, [this]()
+								{ return av_sync; });
+				*/
 
-				//cout << "Input frame (nb_samples): " << ain_frame->nb_samples << endl;
-				//cout << "Output codec context (frame size): " << aout_codec_context->frame_size << endl;
+				// -------------------------------- transcode audio ------------------------------- //
 
-				// --------------------------------- encode audio --------------------------------- //
+				// let's send the (audio) input (compressed) packet to the audio decoder
+				// through the audio input codec context
+				response = avcodec_send_packet(ain_codec_context, ain_packet);
+				if (response < 0)
+					debugger("Error sending audio input (compressed) packet to the audio decoder\n", AV_LOG_ERROR, response);
 
-				// allocate an array of as many pointers as audio channels (in audio output codec context)
-				// each of one will point to the (converted) audio input samples of the corresponding channel
-				// (a temporary storage for the (converted) audio input samples)
-				uint8_t **a_converted_samples = NULL;
-				value = av_samples_alloc_array_and_samples(&a_converted_samples, NULL, aout_codec_context->channels, ain_frame->nb_samples, aout_codec_context->sample_fmt, 0);
-				if (value < 0)
-					debugger("Failed to allocate (converted) audio input samples\n", AV_LOG_ERROR, value);
+				av_packet_unref(ain_packet); // wipe input packet (audio) buffer data // TODO: check this!
 
-				// convert from S16 to FLTP
-				value = swr_convert(resampler_context, a_converted_samples, ain_frame->nb_samples, (const uint8_t **)ain_frame->extended_data, ain_frame->nb_samples);
-				if (value < 0)
-					debugger("Failed to convert the audio input samples\n", AV_LOG_ERROR, value);
-
-				// make the FIFO buffer as large as it needs to be
-				// to hold both, the old and the new (converted) audio input samples
-				value = av_audio_fifo_realloc(a_fifo, av_audio_fifo_size(a_fifo) + ain_frame->nb_samples);
-				if (value < 0)
-					debugger("Failed to reallocate memory for the (converted) audio input samples fifo buffer\n", AV_LOG_ERROR, AVERROR(ENOMEM));
-
-				// add the (converted) audio input samples to the FIFO buffer
-				value = av_audio_fifo_write(a_fifo, (void **)a_converted_samples, ain_frame->nb_samples);
-				if (value < 0)
-					debugger("Failed to write data to (converted) audio input samples fifo buffer\n", AV_LOG_ERROR, 0);
-
-				av_frame_unref(ain_frame); // wipe input frame (audio) buffer data
-
-				// free the (converted) audio input samples array
-				if (a_converted_samples)
-					av_freep(&a_converted_samples[0]);
-
-				// if we have enough samples for the encoder, we encode them
-				// or
-				// if we stop the recording, the remaining samples are sent to the encoder
-				while (av_audio_fifo_size(a_fifo) >= aout_codec_context->frame_size || (rec_status == PAUSED && av_audio_fifo_size(a_fifo) > 0))
+				while (response >= 0)
 				{
-					// depending on the (while) case
-					//const int aout_frame_size = FFMIN(aout_codec_context->frame_size, av_audio_fifo_size(a_fifo));
-					const int aout_frame_size = aout_codec_context->frame_size;
+					// and let's (try to) receive the (audio) input uncompressed frame from the audio decoder
+					// through same codec context
+					response = avcodec_receive_frame(ain_codec_context, ain_frame);
+					if (response == AVERROR(EAGAIN)) // try again
+						break;
+					else if (response < 0)
+						debugger("Error receiving audio input frame from the audio decoder\n", AV_LOG_ERROR, response);
 
-					// read from the (converted) audio input samples fifo buffer
-					// as many samples as required to fill the audio output frame
-					value = av_audio_fifo_read(a_fifo, (void **)aout_frame->data, aout_frame_size);
+					//cout << "Input frame (nb_samples): " << ain_frame->nb_samples << endl;
+					//cout << "Output codec context (frame size): " << aout_codec_context->frame_size << endl;
+
+					// --------------------------------- encode audio --------------------------------- //
+
+					// allocate an array of as many pointers as audio channels (in audio output codec context)
+					// each of one will point to the (converted) audio input samples of the corresponding channel
+					// (a temporary storage for the (converted) audio input samples)
+					uint8_t **a_converted_samples = NULL;
+					value = av_samples_alloc_array_and_samples(&a_converted_samples, NULL, aout_codec_context->channels, ain_frame->nb_samples, aout_codec_context->sample_fmt, 0);
 					if (value < 0)
-						debugger("Failed to read data from the audio samples fifo buffer\n", AV_LOG_ERROR, value);
+						debugger("Failed to allocate (converted) audio input samples\n", AV_LOG_ERROR, value);
 
-					// adjusting audio output frame pts/dts
-					// based on its samples number
-					aout_frame->pts = ts;
-					ts += aout_frame->nb_samples;
+					// convert from S16 to FLTP
+					value = swr_convert(resampler_context, a_converted_samples, ain_frame->nb_samples, (const uint8_t **)ain_frame->extended_data, ain_frame->nb_samples);
+					if (value < 0)
+						debugger("Failed to convert the audio input samples\n", AV_LOG_ERROR, value);
 
-					// let's send the uncompressed (audio) output frame to the audio encoder
-					// through the audio output codec context
-					response = avcodec_send_frame(aout_codec_context, aout_frame);
-					while (response >= 0)
+					// make the FIFO buffer as large as it needs to be
+					// to hold both, the old and the new (converted) audio input samples
+					value = av_audio_fifo_realloc(a_fifo, av_audio_fifo_size(a_fifo) + ain_frame->nb_samples);
+					if (value < 0)
+						debugger("Failed to reallocate memory for the (converted) audio input samples fifo buffer\n", AV_LOG_ERROR, AVERROR(ENOMEM));
+
+					// add the (converted) audio input samples to the FIFO buffer
+					value = av_audio_fifo_write(a_fifo, (void **)a_converted_samples, ain_frame->nb_samples);
+					if (value < 0)
+						debugger("Failed to write data to (converted) audio input samples fifo buffer\n", AV_LOG_ERROR, 0);
+
+					av_frame_unref(ain_frame); // wipe input frame (audio) buffer data // TODO: check this!
+
+					// free the (converted) audio input samples array
+					if (a_converted_samples)
+						av_freep(&a_converted_samples[0]);
+
+					// if we have enough samples for the encoder, we encode them
+					// or
+					// if we stop the recording, the remaining samples are sent to the encoder
+					//while (av_audio_fifo_size(a_fifo) >= aout_codec_context->frame_size || (rec_status == PAUSED && av_audio_fifo_size(a_fifo) > 0))
+					while (av_audio_fifo_size(a_fifo) >= aout_codec_context->frame_size)
 					{
-						// and let's (try to) receive the output packet (compressed) from the audio encoder
-						// through the same codec context
-						response = avcodec_receive_packet(aout_codec_context, aout_packet);
-						if (response == AVERROR(EAGAIN)) // try again
-							break;
-						else if (response < 0)
-							debugger("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
+						// depending on the (while) case
+						//const int aout_frame_size = FFMIN(aout_codec_context->frame_size, av_audio_fifo_size(a_fifo));
+						int aout_frame_size = aout_codec_context->frame_size;
 
-						aout_packet->stream_index = aout_stream_idx; // aout_stream_idx = 1
+						// read from the (converted) audio input samples fifo buffer
+						// as many samples as required to fill the audio output frame
+						value = av_audio_fifo_read(a_fifo, (void **)aout_frame->data, aout_frame_size);
+						if (value < 0)
+							debugger("Failed to read data from the audio samples fifo buffer\n", AV_LOG_ERROR, value);
 
-						// ----------------------- synchronize (audio) output packet ---------------------- //
+						// adjusting audio output frame pts/dts
+						// based on its samples number
+						aout_frame->pts = ts;
+						ts += aout_frame->nb_samples;
 
-						// adjusting output packet pts/dts/duration
-						av_packet_rescale_ts(aout_packet, aout_codec_context->time_base, aout_stream->time_base); // ???
-
-						/*
-						if (aout_packet->pts < 0)
-							aout_packet->pts = aout_packet->dts = 0;
-						*/
-
-						// print output packet information (audio)
-						// FIXME: fix this!
-						printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
-							   aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
-
-						// ---------------------- /synchronize (audio) output packet ---------------------- //
-
-						// write frames in output packet (audio)
-						write_frame_mtx.lock();
-						response = av_interleaved_write_frame(out_format_context, aout_packet);
-						write_frame_mtx.unlock();
-						if (response < 0)
-							debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
-
-						/*
-						av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
-
-						// if we are at the end ???
-						if (sig_ctrl_c)
+						// let's send the uncompressed (audio) output frame to the audio encoder
+						// through the audio output codec context
+						response = avcodec_send_frame(aout_codec_context, aout_frame);
+						while (response >= 0)
 						{
-							// flush the encoder as it may have delayed frames ???
-							while (!last_frame)
-							{
+							if (rec_status == PAUSED)
+								cout << "TEST AUDIO" << endl;
 
-								// let's send the uncompressed (audio) output frame to the audio encoder
-								// through the audio output codec context
-								response = avcodec_send_frame(aout_codec_context, NULL);
+							// and let's (try to) receive the output packet (compressed) from the audio encoder
+							// through the same codec context
+							response = avcodec_receive_packet(aout_codec_context, aout_packet);
+							if (response == AVERROR(EAGAIN)) // try again
+								break;
+							else if (response < 0)
+								debugger("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
+
+							aout_packet->stream_index = aout_stream_idx; // aout_stream_idx = 1
+
+							// ----------------------- synchronize (audio) output packet ---------------------- //
+
+							// adjusting output packet pts/dts/duration
+							av_packet_rescale_ts(aout_packet, aout_codec_context->time_base, aout_stream->time_base); // ???
+
+							/*
+							if (aout_packet->pts < 0)
+								aout_packet->pts = aout_packet->dts = 0;
+							*/
+
+							// print output packet information (audio)
+							// FIXME: fix this!
+							printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
+								   aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
+
+							// ---------------------- /synchronize (audio) output packet ---------------------- //
+
+							// write frames in output packet (audio)
+							av_write_frame_mtx.lock();
+							response = av_interleaved_write_frame(out_format_context, aout_packet);
+							av_write_frame_mtx.unlock();
+							if (response < 0)
+								debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
+
+							av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
+
+							/*
+							// if we are at the end ???
+							if (sig_ctrl_c)
+							{
+								// flush the encoder as it may have delayed frames ???
 								while (!last_frame)
 								{
-									// and let's (try to) receive the output packet (compressed) from the audio encoder
-									// through the same codec context
-									response = avcodec_receive_packet(aout_codec_context, aout_packet);
-									if (response == AVERROR(EAGAIN)) // try again
-										break;
-									else if (response == AVERROR_EOF)
+
+									// let's send the uncompressed (audio) output frame to the audio encoder
+									// through the audio output codec context
+									response = avcodec_send_frame(aout_codec_context, NULL);
+									while (!last_frame)
 									{
-										last_frame = true;
-										break;
+										// and let's (try to) receive the output packet (compressed) from the audio encoder
+										// through the same codec context
+										response = avcodec_receive_packet(aout_codec_context, aout_packet);
+										if (response == AVERROR(EAGAIN)) // try again
+											break;
+										else if (response == AVERROR_EOF)
+										{
+											last_frame = true;
+											break;
+										}
+										else if (response < 0)
+											debugger("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
+
+										aout_packet->stream_index = astream_idx;
+
+										// ----------------------- synchronize (audio) output packet ---------------------- //
+
+										// adjusting output packet pts/dts/duration
+
+										// print output packet information (audio)
+										// FIXME: fix this!
+										printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
+											aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
+
+										// ---------------------- /synchronize (audio) output packet ---------------------- //
+
+										// write frames in output packet (audio)
+										response = av_interleaved_write_frame(out_format_context, aout_packet);
+										if (response < 0)
+											debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
+
+										av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
 									}
-									else if (response < 0)
-										debugger("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
-
-									aout_packet->stream_index = astream_idx;
-
-									// ----------------------- synchronize (audio) output packet ---------------------- //
-
-									// adjusting output packet pts/dts/duration
-
-									// print output packet information (audio)
-									// FIXME: fix this!
-									printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
-										aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
-
-									// ---------------------- /synchronize (audio) output packet ---------------------- //
-
-									// write frames in output packet (audio)
-									response = av_interleaved_write_frame(out_format_context, aout_packet);
-									if (response < 0)
-										debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
-
-									av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
 								}
 							}
+							*/
 						}
-						*/
+						av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
+													  //av_frame_unref(aout_frame);	  // wipe output frame (audio) buffer data
 					}
-					av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
-												  //av_frame_unref(aout_frame);	  // wipe output frame (audio) buffer data
+					// --------------------------------- /encode audio -------------------------------- //
 				}
-				// --------------------------------- /encode audio -------------------------------- //
-			}
-			av_frame_unref(ain_frame); // wipe input frame (audio) buffer data
+				av_frame_unref(ain_frame); // wipe input frame (audio) buffer data
 
-			// ------------------------------- /transcode audio ------------------------------- //
+				// ------------------------------- /transcode audio ------------------------------- //
+			}
+		}
+	}
+}
+
+void ScreenRecorder::changeRecStatus()
+{
+	unsigned char pressed_char;
+	set<unsigned char> accepted_chars = {'p', 'P', 's', 'S', 'c', 'C'};
+	set<unsigned char>::iterator iter;
+
+	while (rec_status != STOPPED)
+	{
+		do
+		{
+			pressed_char = getchar(); // termios
+			iter = accepted_chars.find(pressed_char);
+		} while (iter == accepted_chars.end());
+
+		if ((pressed_char == 'p' || pressed_char == 'P') && rec_status == RECORDING)
+		{
+			rec_status = PAUSED;
+			cout << "PAUSED" << endl;
+			rec_status_cv.notify_one();
+		}
+		else if ((pressed_char == 'c' || pressed_char == 'C') && rec_status == PAUSED)
+		{
+			rec_status = RECORDING;
+			cout << "RECORDING" << endl;
+			rec_status_cv.notify_one();
+		}
+		else if (pressed_char == 's' || pressed_char == 'S')
+		{
+			rec_status = STOPPED;
+			cout << "STOPPED" << endl;
+			rec_status_cv.notify_one();
 		}
 	}
 }

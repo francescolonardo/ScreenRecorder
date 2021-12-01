@@ -4,9 +4,11 @@
 #if defined(__linux__)
 #define PLATFORM_NAME "linux" // Linux
 #include <X11/Xlib.h>
+#include <termios.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
 #include <windows.h>
+#include <termios.h> // TODO: I have to replace this!
 #elif defined(__APPLE__) && defined(__MACH__)
 #define PLATFORM_NAME "mac" // Apple Mac OS
 #endif
@@ -26,11 +28,11 @@
 #include <regex>
 #include <ctime>
 #include <queue>
+#include <set>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
 #include <signal.h>
-#include <termios.h>
 #include <unistd.h>
 
 #define __STDC_CONSTANT_MACROS
@@ -68,13 +70,26 @@ using namespace std;
 class ScreenRecorder
 {
 private:
-	uint8_t rec_status;
-	condition_variable rec_status_cv;
-	mutex rec_status_mtx;
-	queue<AVPacket *> avin_packets_q;
-	mutex q_mtx;
-	mutex write_frame_mtx;
 	struct termios old_tio, new_tio;
+
+	// synchronize audio/video (start-up)
+	bool av_sync = false;
+	mutex av_sync_mtx;
+	condition_variable av_sync_cv;
+
+	// synchronize audio/video (rec_status change)
+	uint8_t rec_status;
+	mutex rec_status_mtx;
+	condition_variable rec_status_cv;
+
+	queue<AVPacket *> vin_packets_q;
+	mutex vin_packets_q_mtx;
+	condition_variable vin_packets_q_cv;
+	queue<AVPacket *> ain_packets_q;
+	mutex ain_packets_q_mtx;
+	condition_variable ain_packets_q_cv;
+
+	mutex av_write_frame_mtx;
 
 	string area_size, area_offsets;
 	string video_fps;
@@ -91,9 +106,11 @@ private:
 	int response;
 
 	// threads' pointers
-	unique_ptr<thread> change_rec_status_thrd;
 	unique_ptr<thread> capture_video_thrd;
+	unique_ptr<thread> elaborate_video_thrd;
 	unique_ptr<thread> capture_audio_thrd;
+	unique_ptr<thread> elaborate_audio_thrd;
+	unique_ptr<thread> change_rec_status_thrd;
 
 	// TODO: check if I need all these global variables
 	// video
@@ -144,12 +161,15 @@ private:
 	void prepareCaptureAudio();
 	void prepareOutputFile();
 
-	void pushPacketsInQueue();
-
-	void changeRecStatus(bool &sig_ctrl_c);
-
 	void captureFramesVideo(bool &sig_ctrl_c);
 	void captureFramesAudio(bool &sig_ctrl_c);
+
+	void capturePacketsVideo();
+	void capturePacketsAudio();
+	void elaboratePacketsVideo();
+	void elaboratePacketsAudio();
+	void changeRecStatus();
+
 	void deallocateResourcesVideo();
 	void deallocateResourcesAudio();
 
