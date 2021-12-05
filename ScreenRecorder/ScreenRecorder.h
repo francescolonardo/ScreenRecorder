@@ -8,7 +8,7 @@
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
 #include <windows.h>
-#include <termios.h> // TODO: I have to replace this!
+#include "ListAVDevices.h"
 #elif defined(__APPLE__) && defined(__MACH__)
 #define PLATFORM_NAME "mac" // Apple Mac OS
 #endif
@@ -32,7 +32,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <signal.h>
 #include <unistd.h>
 
 #define __STDC_CONSTANT_MACROS
@@ -70,18 +69,18 @@ using namespace std;
 class ScreenRecorder
 {
 private:
+#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
 	struct termios old_tio, new_tio;
+#endif
 
-	// synchronize audio/video (start-up)
-	bool av_sync = false;
-	mutex av_sync_mtx;
-	condition_variable av_sync_cv;
-
-	// synchronize audio/video (rec_status change)
+	// rec_status change management
 	uint8_t rec_status;
-	mutex rec_status_mtx;
-	condition_variable rec_status_cv;
+	mutex v_rec_status_mtx;
+	mutex a_rec_status_mtx;
+	condition_variable v_rec_status_cv;
+	condition_variable a_rec_status_cv;
 
+	// av queues management
 	queue<AVPacket *> vin_packets_q;
 	mutex vin_packets_q_mtx;
 	condition_variable vin_packets_q_cv;
@@ -89,14 +88,14 @@ private:
 	mutex ain_packets_q_mtx;
 	condition_variable ain_packets_q_cv;
 
+	// av_frame(...) mutual exclusion
 	mutex av_write_frame_mtx;
 
+	// executable's parameters
 	string area_size, area_offsets;
 	string video_fps;
 	bool audio_flag;
 	string out_filename;
-
-	bool sig_ctrl_c;
 
 	ofstream log_file; // logger()
 	char errbuf[32];   // debugger()
@@ -161,9 +160,6 @@ private:
 	void prepareCaptureAudio();
 	void prepareOutputFile();
 
-	void captureFramesVideo(bool &sig_ctrl_c);
-	void captureFramesAudio(bool &sig_ctrl_c);
-
 	void capturePacketsVideo();
 	void capturePacketsAudio();
 	void elaboratePacketsVideo();
@@ -173,10 +169,14 @@ private:
 	void deallocateResourcesVideo();
 	void deallocateResourcesAudio();
 
+#if defined(_WIN32) || defined(__CYGWIN__)
+	char getchar_win();
+#endif
+
 public:
 	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
 	~ScreenRecorder();
-	void record(bool &sig_ctrl_c);
+	void record();
 };
 
 #endif

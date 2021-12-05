@@ -1,12 +1,5 @@
 #include "ScreenRecorder.h"
 
-bool sig_ctrl_c = false;
-void sigIntHandler(int signum)
-{
-	cout << "\t-> Interrupt signal (CTRL+C) received" << endl;
-	sig_ctrl_c = true;
-}
-
 int main(int argc, char const *argv[])
 {
 	try
@@ -22,13 +15,10 @@ int main(int argc, char const *argv[])
 		bool audio_flag = atoi(argv[4]) == 1 ? true : false;
 		string out_filename = argv[5];
 
-		//printf("Args main: %s %s %s %d %s\n", area_size.c_str(), area_offsets.c_str(), video_fps.c_str(), audio_flag, out_filename.c_str());
-
-		// register signal SIGINT (CTRL+C) and signal handler
-		signal(SIGINT, sigIntHandler);
+		// printf("Args main: %s %s %s %d %s\n", area_size.c_str(), area_offsets.c_str(), video_fps.c_str(), audio_flag, out_filename.c_str());
 
 		ScreenRecorder sr{area_size, area_offsets, video_fps, audio_flag, out_filename}; // TODO: add all args!
-		sr.record(sig_ctrl_c);
+		sr.record();
 	}
 	catch (const std::exception &ex)
 	{
