@@ -1,0 +1,3 @@
+Video input codec: bmp (ID: 78)
+Video input codec context: pix_fmt=bgra
+Error finding video output codec among the existing ones

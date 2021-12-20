@@ -1,0 +1,3 @@
+Video input codec: bmp (ID: 78)
+Video input codec context: pix_fmt=bgra
+Video output codec: h264 (ID: 27)

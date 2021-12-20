@@ -1,4 +1,3 @@
-
 #ifndef AUDIORECORDER_LISTAVDEVICES_H
 #define AUDIORECORDER_LISTAVDEVICES_H
 
@@ -16,11 +15,11 @@
 
 #endif
 
-HRESULT DS_GetAudioVideoInputDevices(std::vector<std::string> &vectorDevices, std::string deviceType);
-std::string GbkToUtf8(const char *src_str);
-std::string Utf8ToGbk(const char *src_str);
+HRESULT DS_GetAudioVideoInputDevices(vector<string> &vectorDevices, string deviceType);
+string GbkToUtf8(const char *src_str);
+string Utf8ToGbk(const char *src_str);
 
-std::string DS_GetDefaultDevice(std::string type);
+string DS_GetDefaultDevice(string type);
 
 #endif
 #endif // AUDIORECORDER_LISTAVDEVICES_H

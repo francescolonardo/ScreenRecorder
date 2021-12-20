@@ -1,0 +1,4 @@
+Video input codec: bmp (ID: 78)
+Video input codec context: pix_fmt=bgra
+Video output codec: mpeg4 (ID: 12)
+Output file format (container) name: mp4 (MP4 (MPEG-4 Part 14))

@@ -3,12 +3,12 @@
 
 #ifdef WINDOWS
 
-static std::string unicode2utf8(const WCHAR *uni)
+static string unicode2utf8(const WCHAR *uni)
 {
 	static char temp[500]; // max length of friendly name by UTF-16 is 128, so 500 in enough by utf-8
 	memset(temp, 0, 500);
 	WideCharToMultiByte(CP_UTF8, 0, uni, -1, temp, 500, NULL, NULL);
-	return std::string(temp);
+	return string(temp);
 }
 
 string GbkToUtf8(const char *src_str)
@@ -47,7 +47,7 @@ string Utf8ToGbk(const char *src_str)
 	return strTemp;
 }
 
-HRESULT DS_GetAudioVideoInputDevices(std::vector<std::string> &vectorDevices, const std::string deviceType)
+HRESULT DS_GetAudioVideoInputDevices(vector<string> &vectorDevices, const string deviceType)
 {
 	GUID guidValue;
 	if (deviceType == "v")
@@ -60,7 +60,7 @@ HRESULT DS_GetAudioVideoInputDevices(std::vector<std::string> &vectorDevices, co
 	}
 	else
 	{
-		throw std::invalid_argument("param deviceType must be 'a' or 'v'.");
+		throw invalid_argument("param deviceType must be 'a' or 'v'.");
 	}
 
 	WCHAR FriendlyName[MAX_FRIENDLY_NAME_LENGTH];
@@ -126,11 +126,11 @@ HRESULT DS_GetAudioVideoInputDevices(std::vector<std::string> &vectorDevices, co
 	return hr;
 }
 
-std::string DS_GetDefaultDevice(std::string type)
+string DS_GetDefaultDevice(string type)
 {
 	if (type == "a")
 	{
-		std::vector<string> v;
+		vector<string> v;
 		int ret = DS_GetAudioVideoInputDevices(v, "a");
 		if (ret >= 0 && !v.empty())
 		{
@@ -143,7 +143,7 @@ std::string DS_GetDefaultDevice(std::string type)
 	}
 	else if (type == "v")
 	{
-		std::vector<string> v;
+		vector<string> v;
 		int ret = DS_GetAudioVideoInputDevices(v, "v");
 		if (ret >= 0 && !v.empty())
 		{
@@ -156,7 +156,7 @@ std::string DS_GetDefaultDevice(std::string type)
 	}
 	else
 	{
-		throw std::invalid_argument("param type must be 'a' or 'v'.");
+		throw invalid_argument("param type must be 'a' or 'v'.");
 	}
 }
 

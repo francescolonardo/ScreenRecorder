@@ -15,12 +15,14 @@ int main(int argc, char const *argv[])
 		bool audio_flag = atoi(argv[4]) == 1 ? true : false;
 		string out_filename = argv[5];
 
-		// printf("Args main: %s %s %s %d %s\n", area_size.c_str(), area_offsets.c_str(), video_fps.c_str(), audio_flag, out_filename.c_str());
+		bool test_flag = false;
+		if (argc == 7)
+			test_flag = atoi(argv[6]) == 1 ? true : false;
 
-		ScreenRecorder sr{area_size, area_offsets, video_fps, audio_flag, out_filename}; // TODO: add all args!
+		ScreenRecorder sr{area_size, area_offsets, video_fps, audio_flag, out_filename, test_flag}; // TODO: add all args!
 		sr.record();
 	}
-	catch (const std::exception &ex)
+	catch (const exception &ex)
 	{
 		cerr << ex.what() << endl;
 	}

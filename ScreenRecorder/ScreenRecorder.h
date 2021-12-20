@@ -4,13 +4,18 @@
 #if defined(__linux__)
 #define PLATFORM_NAME "linux" // Linux
 #include <X11/Xlib.h>
+#include <ncurses.h>
 #include <termios.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
 #include <windows.h>
+#include <curses.h>
+#ifdef WINDOWS
 #include "ListAVDevices.h"
+#endif
 #elif defined(__APPLE__) && defined(__MACH__)
 #define PLATFORM_NAME "mac" // Apple Mac OS
+#include <ncurses.h>
 #endif
 
 #define STATELESS 0
@@ -33,6 +38,7 @@
 #include <mutex>
 #include <thread>
 #include <unistd.h>
+#include <memory>
 
 #define __STDC_CONSTANT_MACROS
 
@@ -69,9 +75,14 @@ using namespace std;
 class ScreenRecorder
 {
 private:
-#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+#if defined(__linux__)
 	struct termios old_tio, new_tio;
 #endif
+
+	// (n)curses
+	WINDOW *win;
+	int inner_box_height = 3, inner_box_width = 24;
+	int rec_info_row = 0;
 
 	// rec_status change management
 	uint8_t rec_status;
@@ -93,16 +104,21 @@ private:
 
 	// executable's parameters
 	string area_size, area_offsets;
+	#if defined(__APPLE__) && defined(__MACH__)
+	string area_width, area_height, area_x_offset, area_y_offset;
+	#endif
 	string video_fps;
 	bool audio_flag;
 	string out_filename;
+	bool test_flag;
 
 	ofstream log_file; // logger()
 	char errbuf[32];   // debugger()
 
+	// globals' definition
 	char tmp_str[100];
 	int value;
-	int response;
+	unsigned int v_packets_captured, v_packets_elaborated; // counters
 
 	// threads' pointers
 	unique_ptr<thread> capture_video_thrd;
@@ -130,6 +146,14 @@ private:
 	AVFrame *vout_frame;
 	AVPacket *vout_packet;
 
+#if defined(__APPLE__) && defined(__MACH__)
+	AVFrame *vout_frame_filtered;
+	AVFilterContext *buffersink_ctx;
+	AVFilterContext *buffersrc_ctx;
+	AVFilterGraph *filter_graph;
+	string filter_descr;
+#endif
+
 	// audio
 	AVInputFormat *ain_format;
 	AVFormatContext *ain_format_context;
@@ -147,6 +171,7 @@ private:
 	AVPacket *aout_packet;
 
 	string getTimestamp();
+	// TODO: find other names
 	void logger(string str);
 	void debugger(string str, int level, int errnum);
 
@@ -158,6 +183,9 @@ private:
 	void prepareEncoderAudio();
 	void prepareCaptureVideo();
 	void prepareCaptureAudio();
+#if defined(__APPLE__) && defined(__MACH__)
+	void prepareFilterVideo();
+#endif
 	void prepareOutputFile();
 
 	void capturePacketsVideo();
@@ -169,12 +197,14 @@ private:
 	void deallocateResourcesVideo();
 	void deallocateResourcesAudio();
 
+	string getTimeRecorded(unsigned int packets_counter, unsigned int video_fps);
+
 #if defined(_WIN32) || defined(__CYGWIN__)
 	char getchar_win();
 #endif
 
 public:
-	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
+	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename, bool test_flag);
 	~ScreenRecorder();
 	void record();
 };
