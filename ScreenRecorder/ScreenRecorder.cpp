@@ -49,7 +49,7 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 
 		wrefresh(win);
 
-		char ch = getch(); // wait for a key
+		char ch = getch(); // waiting for a key
 
 		wmove(win, rec_info_row, 0);
 		wclrtobot(win); // erases the window's rows from the cursor's current location, downwards
@@ -313,6 +313,9 @@ void ScreenRecorder::elaboratePacketsVideo()
 		vin_packets_q_cv.wait(ul, [this]()
 							  { return rec_status == STOPPED || !vin_packets_q.empty(); }); // TODO: improve this!
 
+		if (rec_status == STOPPED)
+			break;
+
 		vin_packet = vin_packets_q.front();
 		vin_packets_q.pop();
 
@@ -346,7 +349,7 @@ void ScreenRecorder::elaboratePacketsVideo()
 			// convert (scale) from BGR to YUV
 			sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
 
-			//av_frame_unref(vin_frame); // wipe input frame (video) buffer data // TODO: change this!
+			// av_frame_unref(vin_frame); // wipe input frame (video) buffer data // TODO: change this!
 
 #if defined(__APPLE__) && defined(__MACH__)
 			// --------------------------------- filter video -------------------------------- //
@@ -439,12 +442,15 @@ void ScreenRecorder::elaboratePacketsAudio()
 	int response = 0;
 	uint64_t ts = 1024; // FIXME: fix this!
 	// bool last_frame = false;
-	//  let's feed our input packet from the input stream
-	//  until it has packets or until user hits CTRL+C
+	// let's feed our input packet from the input stream
+	// until it has packets or until user hits CTRL+C
 	while (rec_status != STOPPED)
 	{
 		ain_packets_q_cv.wait(ul, [this]()
 							  { return rec_status == STOPPED || !ain_packets_q.empty(); }); // TODO: improve this!
+
+		if (rec_status == STOPPED)
+			break;
 
 		ain_packet = ain_packets_q.front();
 		ain_packets_q.pop();
@@ -721,7 +727,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	screen_url = "desktop";
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: implement it
-	screen_url = "0:none"; // screen_url = "Capture screen 0:none";
+	screen_url = "Capture screen 0:none"; // screen_url = "Capture screen 0:none"; or screen_url = "0:none";
 #endif
 
 	// filling the AVFormatContext opening the input file (screen) and reading its header
@@ -810,7 +816,7 @@ void ScreenRecorder::openInputDeviceAudio()
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: implement this
 	mic_device = "avfoundation";
-	mic_url = "none:0"; // mic_url = "none:Built-in Microphone";
+	mic_url = "none:Built-in Microphone"; // mic_url = "none:Built-in Microphone"; or mic_url = "none:0";
 #endif
 
 	// AVInputFormat holds the header information from the input format (container)
@@ -836,7 +842,7 @@ void ScreenRecorder::openInputDeviceAudio()
 	// opening mic url
 	value = avformat_open_input(&ain_format_context, mic_url.c_str(), ain_format, &ain_options);
 	if (value < 0)
-		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
+		debugger("Cannot open mic url\n", AV_LOG_ERROR, value);
 
 	// stream (packets' flow) information analysis
 	// reads packets to get stream information
@@ -1683,7 +1689,7 @@ void ScreenRecorder::deallocateResourcesAudio()
 	}
 }
 
-// TODO: there's a bug, find it! // maybe fixed
+// TODO: there's a bug, find it! // maybe already fixed
 string ScreenRecorder::getTimeRecorded(unsigned int packets_counter, unsigned int video_fps)
 {
 	int time_recorded_msec = 1000 * packets_counter / video_fps;

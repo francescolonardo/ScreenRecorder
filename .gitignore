@@ -1,5 +1,8 @@
+# ignore tests
+ScreenRecorder/test_*
 # ignore all logs
 logs/*
-# ignore video files
+# ignore audio/video files
+*.aac
 *.mp4
 *.avi
