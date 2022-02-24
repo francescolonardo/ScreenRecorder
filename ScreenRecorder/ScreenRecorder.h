@@ -5,7 +5,6 @@
 #define PLATFORM_NAME "linux" // Linux
 #include <X11/Xlib.h>
 #include <ncurses.h>
-#include <termios.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
 #include <windows.h>
@@ -75,10 +74,6 @@ using namespace std;
 class ScreenRecorder
 {
 private:
-#if defined(__linux__)
-	struct termios old_tio, new_tio;
-#endif
-
 	// (n)curses
 	WINDOW *win;
 	int inner_box_height = 3, inner_box_width = 24;
@@ -104,9 +99,9 @@ private:
 
 	// executable's parameters
 	string area_size, area_offsets;
-	#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__APPLE__) && defined(__MACH__)
 	string area_width, area_height, area_x_offset, area_y_offset;
-	#endif
+#endif
 	string video_fps;
 	bool audio_flag;
 	string out_filename;

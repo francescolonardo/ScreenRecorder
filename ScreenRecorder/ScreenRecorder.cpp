@@ -7,59 +7,38 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	// print error messages only
 	av_log_set_level(AV_LOG_ERROR);
 
-#if defined(__linux__)
-	if (!test_flag)
-	{
-		// -------------- termios ------------- //
-		// get the current terminal settings for stdin
-		tcgetattr(STDIN_FILENO, &old_tio);
+	// -------------- (n)curses ----------- //
+	// initializes the screen
+	initscr();
+	noecho();
+	// raw(); // TODO: check this!
+	curs_set(0); // hide cursor
 
-		// keep the old setting to restore them at the end
-		new_tio = old_tio;
+	win = newwin(LINES, COLS, 0, 0);
+	refresh(); //  need to draw the root window
+			   //  without this, apparently the child (win) never draw
 
-		// disable canonical mode (buffered i/o) and local echo
-		new_tio.c_lflag &= (~ICANON & ~ECHO);
+	// mvwprintw(win, rec_info_row++, 0, "Welcome to ScreenRecorder!");
+	mvwprintw(win, rec_info_row++, 0, "Recording area: %s from (%s)", area_size.c_str(), area_offsets.c_str());
+	mvwprintw(win, rec_info_row++, 0, "Selected video fps: %s", video_fps.c_str());
+	mvwprintw(win, rec_info_row++, 0, "Recording audio: %s", audio_flag ? "yes" : "no");
+	mvwprintw(win, rec_info_row++, 0, "Output file: %s", out_filename.c_str());
 
-		// set the new settings immediately
-		tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
-		// -------------- /termios ------------- //
-	}
-#endif
-	if (test_flag)
-	{
-		// -------------- (n)curses ----------- //
-		// initializes the screen
-		initscr();
-		noecho();
-		// raw(); // TODO: check this!
-		curs_set(0); // hide cursor
+	string press_any_str = "Press any key to start recording...";
+	mvwprintw(win, LINES - 1, COLS - press_any_str.length(), press_any_str.c_str());
 
-		win = newwin(LINES, COLS, 0, 0);
-		refresh(); //  need to draw the root window
-				   //  without this, apparently the child (win) never draw
+	wrefresh(win);
 
-		// mvwprintw(win, rec_info_row++, 0, "Welcome to ScreenRecorder!");
-		mvwprintw(win, rec_info_row++, 0, "Recording area: %s from (%s)", area_size.c_str(), area_offsets.c_str());
-		mvwprintw(win, rec_info_row++, 0, "Selected video fps: %s", video_fps.c_str());
-		mvwprintw(win, rec_info_row++, 0, "Recording audio: %s", audio_flag ? "yes" : "no");
-		mvwprintw(win, rec_info_row++, 0, "Output file: %s", out_filename.c_str());
+	char ch = getch(); // waiting for a key
 
-		string press_any_str = "Press any key to start recording...";
-		mvwprintw(win, LINES - 1, COLS - press_any_str.length(), press_any_str.c_str());
+	wmove(win, rec_info_row, 0);
+	wclrtobot(win); // erases the window's rows from the cursor's current location, downwards
 
-		wrefresh(win);
+	wrefresh(win);
 
-		char ch = getch(); // waiting for a key
+	// TODO: implement it!
 
-		wmove(win, rec_info_row, 0);
-		wclrtobot(win); // erases the window's rows from the cursor's current location, downwards
-
-		wrefresh(win);
-
-		// TODO: implement it!
-
-		// ------------- /(n)curses ----------- //
-	}
+	// ------------- /(n)curses ----------- //
 
 	// globals' initialization
 	value = 0;
@@ -138,10 +117,6 @@ ScreenRecorder::~ScreenRecorder()
 	}
 	change_rec_status_thrd.get()->join();
 
-	werase(win);
-	mvwprintw(win, 0, 0, "TEST!");
-	wrefresh(win);
-
 	av_write_trailer(out_format_context);
 
 	// deallocate everything
@@ -149,39 +124,26 @@ ScreenRecorder::~ScreenRecorder()
 	if (audio_flag)
 		deallocateResourcesAudio();
 
-		// TODO: remember to clean everything (e.g. tmp_str)
+	// TODO: remember to clean everything (e.g. tmp_str)
 
-#if defined(__linux__)
-	if (!test_flag)
-	{
-		// -------------- termios ------------- //
-		// restore the former settings
-		tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
+	// -------------- (n)curses ----------- //
+	napms(1000);
+	werase(win);
 
-		// -------------- /termios ------------- //
-	}
-#endif
-	if (test_flag)
-	{
-		// -------------- (n)curses ----------- //
-		napms(1000);
-		werase(win);
+	mvwprintw(win, 0, 0, "Output file `%s` successfully saved.", out_filename.c_str());
+	string press_exit_str = "Press any key to exit...";
+	mvwprintw(win, LINES - 1, COLS - press_exit_str.length(), press_exit_str.c_str());
+	wrefresh(win);
 
-		mvwprintw(win, 0, 0, "Output file `%s` successfully saved.", out_filename.c_str());
-		string press_exit_str = "Press any key to exit...";
-		mvwprintw(win, LINES - 1, COLS - press_exit_str.length(), press_exit_str.c_str());
-		wrefresh(win);
+	char ch = getch(); // wait for a key
 
-		char ch = getch(); // wait for a key
+	werase(win);
+	wrefresh(win);
 
-		werase(win);
-		wrefresh(win);
-
-		// deallocates memory and ends curses
-		delwin(win);
-		endwin();
-		// -------------- /(n)curses ---------- //
-	}
+	// deallocates memory and ends curses
+	delwin(win);
+	endwin();
+	// -------------- /(n)curses ---------- //
 }
 
 void ScreenRecorder::record()
@@ -229,28 +191,26 @@ void ScreenRecorder::capturePacketsVideo()
 				vin_packets_q_cv.notify_one(); // notify elaboratePacketsVideo()
 
 				v_packets_captured++;
-				if (test_flag)
-				{
-					// (n)curses in the middle
-					wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
-					mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
 
-					// fix an uncommon problem on Windows // TODO: go deep!
-					wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
+				// (n)curses in the middle
+				wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+				mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
 
-					wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
-					time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
-					mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
+				// fix an uncommon problem on Windows // TODO: go deep!
+				wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
 
-					// fix an uncommon problem on Windows // TODO: go deep!
-					wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
+				wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+				time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
+				mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
 
-					wrefresh(win);
-				}
+				// fix an uncommon problem on Windows // TODO: go deep!
+				wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+
+				wrefresh(win);
 			}
 		}
 		else // TODO: check this!
@@ -1428,9 +1388,7 @@ void ScreenRecorder::changeRecStatus()
 		{
 			if (!test_flag)
 			{
-#if defined(__linux__)
-				pressed_char = getchar(); // termios
-#elif defined(_WIN32) || defined(__CYGWIN__)
+#if defined(_WIN32) || defined(__CYGWIN__)
 				pressed_char = getchar_win(); // windows API
 #endif
 			}
@@ -1443,81 +1401,69 @@ void ScreenRecorder::changeRecStatus()
 
 		if ((pressed_char == 'p' || pressed_char == 'P') && rec_status == RECORDING)
 		{
-			if (test_flag)
-			{
-				// flash();
-				wmove(win, 0, COLS - pressed_char_str.length());
-				wclrtoeol(win);
-				pressed_char_str = "Detected [p]";
-				mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
+			// flash();
+			wmove(win, 0, COLS - pressed_char_str.length());
+			wclrtoeol(win);
+			pressed_char_str = "Detected [p]";
+			mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
 
-				wrefresh(win);
-				napms(750);
+			wrefresh(win);
+			napms(750);
 
-				wmove(win, 0, COLS - pressed_char_str.length());
-				wclrtoeol(win);
+			wmove(win, 0, COLS - pressed_char_str.length());
+			wclrtoeol(win);
 
-				wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win);
-				mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "PAUSED.");
+			wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+			wclrtoeol(win);
+			mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "PAUSED.");
 
-				wrefresh(win);
-			}
+			wrefresh(win);
+
 			rec_status = PAUSED;
-			if (!test_flag)
-				cout << "PAUSED" << endl;
 		}
 		else if ((pressed_char == 'r' || pressed_char == 'R') && rec_status == PAUSED)
 		{
-			if (test_flag)
-			{
-				// flash();
-				wmove(win, 0, COLS - pressed_char_str.length());
-				wclrtoeol(win);
-				pressed_char_str = "Detected [r]";
-				mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
+			// flash();
+			wmove(win, 0, COLS - pressed_char_str.length());
+			wclrtoeol(win);
+			pressed_char_str = "Detected [r]";
+			mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
 
-				wrefresh(win);
-				napms(750);
+			wrefresh(win);
+			napms(750);
 
-				wmove(win, 0, COLS - pressed_char_str.length());
-				wclrtoeol(win);
+			wmove(win, 0, COLS - pressed_char_str.length());
+			wclrtoeol(win);
 
-				wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win);
-				mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "RECORDING...");
+			wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+			wclrtoeol(win);
+			mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "RECORDING...");
 
-				wrefresh(win);
-			}
+			wrefresh(win);
+
 			rec_status = RECORDING;
-			if (!test_flag)
-				cout << "RECORDING" << endl;
 		}
 		else if (pressed_char == 's' || pressed_char == 'S')
 		{
-			if (test_flag)
-			{
-				// flash();
-				wmove(win, 0, COLS - pressed_char_str.length());
-				wclrtoeol(win);
-				pressed_char_str = "Detected [s]";
-				mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
+			// flash();
+			wmove(win, 0, COLS - pressed_char_str.length());
+			wclrtoeol(win);
+			pressed_char_str = "Detected [s]";
+			mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
 
-				wrefresh(win);
-				napms(750);
+			wrefresh(win);
+			napms(750);
 
-				wmove(win, 0, COLS - pressed_char_str.length());
-				wclrtoeol(win);
+			wmove(win, 0, COLS - pressed_char_str.length());
+			wclrtoeol(win);
 
-				wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win);
-				mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "STOPPED!");
+			wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+			wclrtoeol(win);
+			mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "STOPPED!");
 
-				wrefresh(win);
-			}
+			wrefresh(win);
+
 			rec_status = STOPPED;
-			if (!test_flag)
-				cout << "STOPPED" << endl;
 		}
 
 		v_rec_status_cv.notify_one();
