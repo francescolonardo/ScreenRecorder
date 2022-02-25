@@ -196,16 +196,18 @@ void ScreenRecorder::capturePacketsVideo()
 			else
 			{
 				//commit comment
-				if(queue_selector==0)
+				if(queue_selector==0){
 					if(vin_packets_q.size()==10){
 						queue_selector_lock.lock();
 						queue_selector = 1;
 					}
-				else if(queue_selector == 1)
+				}	
+				else if(queue_selector == 1){
 					if(vin_packets_q1.size()==10){
 						queue_selector_lock.lock();
 						queue_selector = 0;
 					}
+				}
 				
 				if(queue_selector == 0)
 					vin_packets_q.push(tmp_vin_packet);
