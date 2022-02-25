@@ -19,6 +19,7 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 			   //  without this, apparently the child (win) never draw
 
 	// mvwprintw(win, rec_info_row++, 0, "Welcome to ScreenRecorder!");
+	// Start writing from position 0,0
 	mvwprintw(win, rec_info_row++, 0, "Recording area: %s from (%s)", area_size.c_str(), area_offsets.c_str());
 	mvwprintw(win, rec_info_row++, 0, "Selected video fps: %s", video_fps.c_str());
 	mvwprintw(win, rec_info_row++, 0, "Recording audio: %s", audio_flag ? "yes" : "no");
@@ -31,18 +32,19 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 
 	char ch = getch(); // waiting for a key
 
+	// move cursor in position rec_info_row,0 in order to erase
 	wmove(win, rec_info_row, 0);
 	wclrtobot(win); // erases the window's rows from the cursor's current location, downwards
 
 	wrefresh(win);
 
-	// TODO: implement it!
-
 	// ------------- /(n)curses ----------- //
 
 	// globals' initialization
 	value = 0;
+	// # of captured packets
 	v_packets_captured = 0;
+	// # of elaborated packets
 	v_packets_elaborated = 0;
 
 	// TODO: check if I need all these global variables
@@ -53,8 +55,6 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	vin_stream_idx = 0;
 	vout_stream_idx = 0;
 	vin_codec_context = NULL;
-	out_format = NULL;		   // extra
-	out_format_context = NULL; // extra
 	vout_stream = NULL;
 	vout_codec_context = NULL;
 	vin_packet = NULL;
@@ -62,6 +62,11 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	rescaler_context = NULL;
 	vout_frame = NULL;
 	vout_packet = NULL;
+	// audio and video output
+	// check extra part in prepareEncoderVideo
+	out_format = NULL;		   
+	out_format_context = NULL; 
+
 
 	// audio initialization
 	if (audio_flag)
@@ -637,12 +642,12 @@ void ScreenRecorder::openInputDeviceVideo()
 	// registering devices
 	avdevice_register_all(); // Must be executed, otherwise av_find_input_format() fails
 
-	// specifying the screen device as: x11grab (Linux), dshow (Windows) or avfoundation (Mac)
+	// specifying the screen device as: x11grab (Linux), gdigrab (Windows) or avfoundation (Mac)
 	string screen_device;
 #if defined(__linux__)
 	screen_device = "x11grab";
 #elif defined(_WIN32) || defined(__CYGWIN__)
-	screen_device = "gdigrab"; // = "dshow";
+	screen_device = "gdigrab"; 
 #elif defined(__APPLE__) && defined(__MACH__)
 	screen_device = "avfoundation";
 #endif
@@ -650,6 +655,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	// AVInputFormat holds the header information from the input format (container)
 	vin_format = av_find_input_format(screen_device.c_str());
 	if (!vin_format)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Unknow screen device\n", AV_LOG_ERROR, 0);
 
 	// getting current display information
@@ -663,6 +669,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	{
 		snprintf(tmp_str, sizeof(tmp_str), "Cannot open current display (%s)\n",
 				 screen_number.c_str());
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger(tmp_str, AV_LOG_WARNING, 0);
 	}
 	// get current screen's size
@@ -699,44 +706,54 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	value = av_dict_set(&vin_options, "pixel_format", "bgr0", 0); // bgr0 or yuyv422 or uyvy422
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (pixel_format)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
 	value = av_dict_set(&vin_options, "video_size", area_size.c_str(), 0);
+	//TODO: debugger can be removed - throw std::runtime_error
 	if (value < 0)
 		debugger("Error setting video input options (video_size)\n", AV_LOG_ERROR, value);
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: check this!
+	// area_size: 1920x1200
 	int delimiter1_pos = area_size.find("x");
 	area_width = area_size.substr(0, delimiter1_pos);
 	area_height = area_size.substr(delimiter1_pos + 1, area_size.length());
+	// area_offset: 0,0
 	int delimiter2_pos = area_offsets.find(",");
 	area_x_offset = area_offsets.substr(0, delimiter2_pos);
 	area_y_offset = area_offsets.substr(delimiter2_pos + 1, area_offsets.length());
+	// cropping basing on the input values
 	filter_descr = "crop=" + area_width + ":" + area_height + ":" + area_x_offset + ":" + area_y_offset;
 #endif
 
 	value = av_dict_set(&vin_options, "framerate", video_fps.c_str(), 0);
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (framerate)\n", AV_LOG_ERROR, value);
 
 	value = av_dict_set(&vin_options, "preset", "fast", 0);
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__)
 	value = av_dict_set(&vin_options, "show_region", "1", 0); // https://stackoverflow.com/questions/52863787/record-region-of-screen-using-ffmpeg
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (show_region)\n", AV_LOG_ERROR, value);
 #endif
 
 	value = av_dict_set(&vin_options, "probesize", "20M", 0); // https://stackoverflow.com/questions/57903639/why-getting-and-how-to-fix-the-warning-error-on-ffmpeg-not-enough-frames-to-es
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (probesize)\n", AV_LOG_ERROR, value);
 
 	// opening screen url
 	value = avformat_open_input(&vin_format_context, screen_url.c_str(), vin_format, &vin_options);
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
 
 	// stream (packets' flow) information analysis
@@ -744,6 +761,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	// this function populates vin_format_context->streams (with vin_format_context->nb_streams streams)
 	value = avformat_find_stream_info(vin_format_context, &vin_options);
 	if (value < 0)
+		//TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot find stream (video) information\n", AV_LOG_ERROR, value);
 
 	av_dict_free(&vin_options);
@@ -824,17 +842,16 @@ void ScreenRecorder::openInputDeviceAudio()
 void ScreenRecorder::prepareDecoderVideo()
 {
 	// we have to find a stream (stream type: AVMEDIA_TYPE_VIDEO)
+	// value will be the index of the found stream
 	value = av_find_best_stream(vin_format_context, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
 	if (value < 0)
 		debugger("Cannot find a video stream in the input file\n", AV_LOG_ERROR, value);
+
 	int vin_stream_idx = value; // vin_stream_idx = 0
 
 	// this is the input video stream
 	vin_stream = vin_format_context->streams[vin_stream_idx];
 
-	// FIXME: fix this!
-	// guessing input stream (video) framerate
-	// vin_fps = av_guess_frame_rate(vin_format_context, vin_stream, NULL);
 	vin_fps = AVRational{stoi(video_fps), 1};
 
 	// the component that knows how to decode the stream it's the codec
@@ -958,22 +975,18 @@ void ScreenRecorder::prepareEncoderVideo()
 		debugger(tmp_str, AV_LOG_INFO, 0);
 	}
 
-	// setting up (video) output codec context properties
-	// vout_codec_context->codec_id = out_format_context->video_codec; // AV_CODEC_ID_H264; AV_CODEC_ID_MPEG4; AV_CODEC_ID_MPEG1VIDEO // useless
-	// vout_codec_context->codec_type = AVMEDIA_TYPE_VIDEO; // useless
-
+// setting up output codec context parameters taking them from the input codec contex
 #if defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
 	vout_codec_context->width = vin_codec_context->width;
 	vout_codec_context->height = vin_codec_context->height;
 #elif defined(__APPLE__) && defined(__MACH__)
-	vout_codec_context->width = stoi(area_width);
-	vout_codec_context->height = stoi(area_height);
+	vout_codec_context->width = stoi(area_width); //TODO: change in area_width_macOs
+	vout_codec_context->height = stoi(area_height);//TODO: change in area_height_macOs
 #endif
 
 	vout_codec_context->pix_fmt = vout_codec->pix_fmts ? vout_codec->pix_fmts[0] : AV_PIX_FMT_YUV420P;
 
 	// print (video) output codec context properties
-	// FIXME: fix this!
 	if (!test_flag)
 		printf("Video output codec context: pix_fmt=%s\n", av_get_pix_fmt_name(vout_codec_context->pix_fmt));
 
@@ -998,7 +1011,6 @@ void ScreenRecorder::prepareEncoderVideo()
 	// vout_codec_context->framerate = vin_fps;		 // useless (I think)
 
 	// print other (video) output codec context properties
-	// FIXME: fix this!
 	if (!test_flag)
 		printf("Video output codec context: time_base=%d/%d\n", vout_codec_context->time_base.num, vout_codec_context->time_base.den);
 
@@ -1038,6 +1050,7 @@ void ScreenRecorder::prepareEncoderVideo()
 	if (value < 0)
 		debugger("Unable to copy video output stream parameters from video output codec context\n", AV_LOG_ERROR, value);
 
+	//TODO: move this part away
 	mvwprintw(win, rec_info_row++, 0, "- stream #0 (video) %s, %s", avcodec_get_name(vout_codec_context->codec_id), av_get_pix_fmt_name(vout_codec_context->pix_fmt)); // (n)curses
 	if (!audio_flag)
 		wrefresh(win);
@@ -1134,6 +1147,7 @@ void ScreenRecorder::prepareCaptureVideo()
 	vin_packet = av_packet_alloc();
 	if (!vin_packet)
 		debugger("Failed to allocate memory for the video input packet\n", AV_LOG_ERROR, AVERROR(ENOMEM));
+
 	vin_frame = av_frame_alloc();
 	if (!vin_frame)
 		debugger("Failed to allocate memory for the video input frame\n", AV_LOG_ERROR, AVERROR(ENOMEM));
@@ -1152,10 +1166,11 @@ void ScreenRecorder::prepareCaptureVideo()
 		vout_codec_context->width, vout_codec_context->height, vout_codec_context->pix_fmt,
 		SWS_BILINEAR, NULL, NULL, NULL); // SWS_DIRECT_BGR or SWS_BILINEAR ???
 	*/
+
 	if (!rescaler_context)
 		debugger("Failed to allocate memory for the video rescaler context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 
-	// we need a (video) output frame to store ???
+	// we need a (video) output frame because of the rescaling (converting from bgr to yuv)
 	// (for temporary storage)
 	vout_frame = av_frame_alloc();
 	if (!vout_frame)
@@ -1348,7 +1363,7 @@ void ScreenRecorder::prepareOutputFile()
 	// av_opt_set(vout_codec_context->priv_data, "movflags", "frag_keyframe+delay_moov", 0);
 	// av_opt_set_int(vout_codec_context->priv_data, "crf", 28, AV_OPT_SEARCH_CHILDREN); // change `cq` to `crf` if using libx264
 
-	// some advanced container file (e.g. mp4) requires header information
+	// an advanced container file (e.g. mp4) requires header information
 	value = avformat_write_header(out_format_context, &hdr_options);
 	if (value < 0)
 		debugger("Error writing the output file header\n", AV_LOG_ERROR, value);
@@ -1389,7 +1404,7 @@ void ScreenRecorder::changeRecStatus()
 			if (!test_flag)
 			{
 #if defined(_WIN32) || defined(__CYGWIN__)
-				pressed_char = getchar_win(); // windows API
+				pressed_char = getchar_win(); // windows API 
 #endif
 			}
 			else
