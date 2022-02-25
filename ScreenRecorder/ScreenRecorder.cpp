@@ -200,12 +200,14 @@ void ScreenRecorder::capturePacketsVideo()
 					if(vin_packets_q.size()==10){
 						queue_selector_lock.lock();
 						queue_selector = 1;
+						queue_selector_lock.unlock();
 					}
 				}	
 				else if(queue_selector == 1){
 					if(vin_packets_q1.size()==10){
 						queue_selector_lock.lock();
 						queue_selector = 0;
+						queue_selector_lock.unlock();
 					}
 				}
 				
