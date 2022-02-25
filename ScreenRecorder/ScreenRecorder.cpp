@@ -195,18 +195,18 @@ void ScreenRecorder::capturePacketsVideo()
 			}
 			else
 			{
-				if(queue==0)
-					if(vin_packets_q.size==10){
+				if(queue_selector==0)
+					if(vin_packets_q.size()==10){
 						queue_selector_lock.lock()
-						queue = 1;
+						queue_selector = 1;
 					}
-				else if(queue == 1)
-					if(vin_packets_q1.size==10){
+				else if(queue_selector == 1)
+					if(vin_packets_q1.size()==10){
 						queue_selector_lock.lock()
-						queue = 0;
+						queue_selector = 0;
 					}
 				
-				if(queue == 0)
+				if(queue_selector == 0)
 					vin_packets_q.push(tmp_vin_packet);
 				else
 					vin_packets_q1.push(tmp_vin_packet);
