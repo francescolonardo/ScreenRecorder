@@ -47,6 +47,8 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	// # of elaborated packets
 	v_packets_elaborated = 0;
 
+	queue_selector = 0;
+
 	// TODO: check if I need all these global variables
 	// video initialization
 	vin_format = NULL;
@@ -175,6 +177,7 @@ void ScreenRecorder::record()
 void ScreenRecorder::capturePacketsVideo()
 {
 	// unique_lock<mutex> ul(v_rec_status_mtx);
+	unique_lock<mutex> queue_selector_lock(queue_selector_mtx);
 
 	string time_str;
 	AVPacket *tmp_vin_packet;
@@ -192,7 +195,22 @@ void ScreenRecorder::capturePacketsVideo()
 			}
 			else
 			{
-				vin_packets_q.push(tmp_vin_packet);
+				if(queue==0)
+					if(vin_packets_q.size==10){
+						queue_selector_lock.lock()
+						queue = 1;
+					}
+				else if(queue == 1)
+					if(vin_packets_q1.size==10){
+						queue_selector_lock.lock()
+						queue = 0;
+					}
+				
+				if(queue == 0)
+					vin_packets_q.push(tmp_vin_packet);
+				else
+					vin_packets_q1.push(tmp_vin_packet);
+
 				vin_packets_q_cv.notify_one(); // notify elaboratePacketsVideo()
 
 				v_packets_captured++;
@@ -275,14 +293,20 @@ void ScreenRecorder::elaboratePacketsVideo()
 	int response = 0;
 	while (rec_status != STOPPED)
 	{
-		vin_packets_q_cv.wait(ul, [this]()
-							  { return rec_status == STOPPED || !vin_packets_q.empty(); }); // TODO: improve this!
+		vin_packets_q_cv.wait(ul, [this](){ return (rec_status == STOPPED || (queue_selector==1 && !vin_packets_q.empty()) || (queue_selector==0 && !vin_packets_q1.empty()) ); }); // TODO: improve this!
 
 		if (rec_status == STOPPED)
 			break;
 
-		vin_packet = vin_packets_q.front();
-		vin_packets_q.pop();
+		if(queue_selector == 1){
+			vin_packet = vin_packets_q.front();
+			vin_packets_q.pop();
+		}
+		else{
+			vin_packet = vin_packets_q1.front();
+			vin_packets_q1.pop();
+		}
+
 
 		// TODO: remove this! (test purpose)
 		if (!test_flag)
