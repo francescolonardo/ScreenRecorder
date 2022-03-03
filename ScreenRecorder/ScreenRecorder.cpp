@@ -440,7 +440,7 @@ void ScreenRecorder::elaboratePacketsAudio() {
 	// let's feed our input packet from the input stream
 	// until it has packets or until user hits CTRL+C
 	while (rec_status != STOPPED) {
-		ain_packets_q_cv.wait(ul, [this]() { return rec_status == STOPPED || !ain_packets_q.empty(); }); // TODO: improve this!
+		ain_packets_q_cv.wait(queue_lock, [this]() { return rec_status == STOPPED || !ain_packets_q.empty(); }); // TODO: improve this!
 
 		if (rec_status == STOPPED)
 			break;
