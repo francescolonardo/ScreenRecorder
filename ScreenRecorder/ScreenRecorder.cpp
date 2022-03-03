@@ -185,7 +185,7 @@ void ScreenRecorder::capturePacketsVideo() {
 				queue_lock.lock();
 				vin_packets_q.push(tmp_vin_packet);
 				queue_lock.unlock();
-
+				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
 				// notify elaboratePacketsVideo()
 				vin_packets_q_cv.notify_one();
 
@@ -226,7 +226,10 @@ void ScreenRecorder::capturePacketsVideo() {
 }
 
 void ScreenRecorder::capturePacketsAudio() {
-	// unique_lock<mutex> ul(a_rec_status_mtx);
+	unique_lock<mutex> queue_lock(ain_packets_q_mtx, defer_lock);
+	unique_lock<mutex> rec_lock(a_rec_status_mtx, defer_lock);
+
+	//TODO: have to choose if implement the rec lock on read or not 
 
 	AVPacket* tmp_ain_packet;
 	while (rec_status != STOPPED) {
@@ -239,8 +242,13 @@ void ScreenRecorder::capturePacketsAudio() {
 				av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
 			}
 			else {
+				queue_lock.lock();
 				ain_packets_q.push(tmp_ain_packet);
-				ain_packets_q_cv.notify_one(); // notify elaboratePacketsAudio()
+				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
+				queue_lock.unlock();
+
+				// notify elaboratePacketsAudio()
+				ain_packets_q_cv.notify_one();
 			}
 		}
 		else {
@@ -421,7 +429,10 @@ void ScreenRecorder::elaboratePacketsVideo() {
 }
 
 void ScreenRecorder::elaboratePacketsAudio() {
-	unique_lock<mutex> ul(ain_packets_q_mtx);
+	unique_lock<mutex> queue_lock(ain_packets_q_mtx, defer_lock);
+	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
+
+	//TODO: have to choose if implement the rec lock on read or not 
 
 	int response = 0;
 	uint64_t ts = 1024; // FIXME: fix this!
@@ -434,8 +445,10 @@ void ScreenRecorder::elaboratePacketsAudio() {
 		if (rec_status == STOPPED)
 			break;
 
+		queue_lock.lock();
 		ain_packet = ain_packets_q.front();
 		ain_packets_q.pop();
+		queue_lock.unlock();
 
 		// TODO: remove this! (test purpose)
 		if (!test_flag)
