@@ -164,29 +164,28 @@ void ScreenRecorder::capturePacketsVideo() {
 
 	string time_str;
 	AVPacket* tmp_vin_packet;
-	rec_lock.lock();
+	//rec_lock.lock();
 	while (rec_status != STOPPED) {
-		rec_lock.unlock();
-		// v_rec_status_cv.wait(ul, [this]() { return rec_status != PAUSED; });
+		//rec_lock.unlock();
 
 		tmp_vin_packet = av_packet_alloc();
 		if (av_read_frame(vin_format_context, tmp_vin_packet) == 0) {
-			rec_lock.lock();
+			//rec_lock.lock();
 
 			if (rec_status == PAUSED) {
 				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
 				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
-				rec_lock.unlock();
+				//rec_lock.unlock();
 			}
 			else {
-				rec_lock.unlock();
+				//rec_lock.unlock();
 
 				//put the packet in the queue
 				queue_lock.lock();
 				vin_packets_q.push(tmp_vin_packet);
 				// notify elaboratePacketsVideo()
-				vin_packets_q_cv.notify_one();
 				queue_lock.unlock();
+				vin_packets_q_cv.notify_one();
 				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
 
 				v_packets_captured++;
@@ -271,19 +270,18 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	// until it has packets or until user hits CTRL+C
 	unsigned int ts = 0;
 	int response = 0;
-	//Need 
-	rec_lock.lock();
+	//rec_lock.lock();
 	while (rec_status != STOPPED) {
-		rec_lock.unlock();
+		//rec_lock.unlock();
 
 		vin_packets_q_cv.wait(queue_lock, [this, &rec_lock]() {
-			rec_lock.lock();
+			//rec_lock.lock();
 			//exit contition 1
 			if (rec_status == STOPPED) {
-				rec_lock.unlock();
+				//rec_lock.unlock();
 				return true;
 			}
-			rec_lock.unlock();
+			//rec_lock.unlock();
 
 			//**** untoggle comments if you want lock also in reading 
 			// queue_lock.lock();
@@ -297,12 +295,12 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			return (!vin_packets_q.empty());
 		});
 
-		rec_lock.lock();
+		//rec_lock.lock();
 		if (rec_status == STOPPED) {
-			rec_lock.unlock();
+			//rec_lock.unlock();
 			break;
 		}
-		rec_lock.unlock();
+		//rec_lock.unlock();
 
 		//Using lock in defer mode we can free it just after
 		//we pop the packet, so the capture thread can go on
