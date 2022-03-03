@@ -4,5 +4,4 @@ ScreenRecorder/test_*
 logs/*
 # ignore audio/video files
 *.aac
-*.mp4
 *.avi
