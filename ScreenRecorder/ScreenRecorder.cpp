@@ -293,7 +293,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		vin_packets_q_cv.wait(queue_lock, [this]() {
 			return (
 				((rec_status == STOPPED && !vin_packets_q.empty()) || !vin_packets_q.empty())
-				)
+				);
 		});
 
 	//TODO: if STOPPED this thread will elaborate only on packet because notify on capture will never be called again !!!!!! ***1 DONE
