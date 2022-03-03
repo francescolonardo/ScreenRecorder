@@ -265,6 +265,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	// until it has packets or until user hits CTRL+C
 	unsigned int ts = 0;
 	int response = 0;
+	//Need 
 	rec_lock.lock();
 	while (rec_status != STOPPED) {
 		rec_lock.unlock();
