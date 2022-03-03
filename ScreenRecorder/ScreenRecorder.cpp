@@ -184,10 +184,10 @@ void ScreenRecorder::capturePacketsVideo() {
 				//put the packet in the queue
 				queue_lock.lock();
 				vin_packets_q.push(tmp_vin_packet);
-				queue_lock.unlock();
-				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
 				// notify elaboratePacketsVideo()
 				vin_packets_q_cv.notify_one();
+				queue_lock.unlock();
+				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
 
 				v_packets_captured++;
 
