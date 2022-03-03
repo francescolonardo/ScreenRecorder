@@ -296,7 +296,8 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		});
 
 		//rec_lock.lock();
-		if (rec_status == STOPPED) {
+		//TODO: if STOPPED this thread will elaborate only on packet because notify on capture will never be called again !!!!!! ***1
+		if (rec_status == STOPPED && !vin_packets_q.empty()) {
 			//rec_lock.unlock();
 			break;
 		}
@@ -309,121 +310,132 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		vin_packets_q.pop();
 		queue_lock.unlock();
 
+		//TODO: ***1 in order to solve this problem all the code below MUST be moved into a new function so it can be called more times using a cicle !!!
+
+
 		// TODO: remove this! (test purpose)
 		if (!test_flag)
 			cout << "Video packet popped (video queue size: " << vin_packets_q.size() << ")" << endl;
 
 		// -------------------------------- transcode video ------------------------------ //
 
-		// let's send the input (compressed) packet to the video decoder
-		// through the video input codec context
-		response = avcodec_send_packet(vin_codec_context, vin_packet);
-		if (response < 0)
-			debugger("Error sending input (compressed) packet to the video decoder\n", AV_LOG_ERROR, response);
-
-		av_packet_unref(vin_packet); // wipe input packet (video) buffer data
-		av_packet_free(&vin_packet); // free input packet (video) buffer data
-
-		while (response == 0) {
-			// and let's (try to) receive the input uncompressed frame from the video decoder
-			// through same codec context
-			response = avcodec_receive_frame(vin_codec_context, vin_frame);
-			if (response == AVERROR(EAGAIN)) // try again
-				break;
-			else if (response < 0)
-				debugger("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
-
-			// --------------------------------- encode video -------------------------------- //
-
-			// convert (scale) from BGR to YUV
-			sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
-
-			// av_frame_unref(vin_frame); // wipe input frame (video) buffer data // TODO: change this!
-
-#if defined(__APPLE__) && defined(__MACH__)
-			// --------------------------------- filter video -------------------------------- //
-
-			// push (video) output frame into the filtergraph
-			response = av_buffersrc_add_frame_flags(buffersrc_ctx, vout_frame, AV_BUFFERSRC_FLAG_KEEP_REF);
-			if (response < 0)
-				debugger("Error while feeding the filtergraph\n", AV_LOG_ERROR, response);
-
-			// av_frame_unref(vout_frame); // wipe output frame (video) buffer data // TODO: change this!
-
-			// pull (video) output filtered frame from the filtergraph
-			response = av_buffersink_get_frame(buffersink_ctx, vout_frame_filtered);
-			if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
-				break;
-			else if (response < 0)
-				debugger("Error filtering (cropping) video input frame\n", AV_LOG_ERROR, response);
-
-			// --------------------------------- /filter video ------------------------------- //
-
-			// setting (video) output frame pts
-			vout_frame_filtered->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
-
-			// let's send the uncompressed output frame to the video encoder
-			// through the video output codec context
-			response = avcodec_send_frame(vout_codec_context, vout_frame_filtered);
-
-#elif defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
-
-			// setting (video) output frame pts
-			vout_frame->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
-
-			// let's send the uncompressed output frame to the video encoder
-			// through the video output codec context
-			response = avcodec_send_frame(vout_codec_context, vout_frame);
-
-#endif
-			while (response == 0) {
-				// and let's (try to) receive the output packet (compressed) from the video encoder
-				// through the same codec context
-				response = avcodec_receive_packet(vout_codec_context, vout_packet);
-				if (response == AVERROR(EAGAIN)) // try again
-					break;
-				else if (response < 0)
-					debugger("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
-
-				vout_packet->stream_index = vout_stream_idx; // vout_stream_idx = 0
-
-				// ----------------------- synchronize (video) ouput packet ----------------------- //
-
-				// adjusting output packet timestamps (video)
-				// av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
-				vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base,
-
-				// print output packet information (video)
-				// FIXME: fix this!
-				if (!test_flag)
-					printf(" - Video output packet: pts=%ld [dts=%ld], duration=%ld, size=%d\n",
-						vout_packet->pts, vout_packet->dts, vout_packet->duration, vout_packet->size);
-
-			 // ----------------------- /synchronize (video) ouput packet ---------------------- //
-
-			 // write frames in output packet (video)
-				av_write_frame_mtx.lock();
-				response = av_write_frame(out_format_context, vout_packet);
-				av_write_frame_mtx.unlock();
-				if (response < 0)
-					debugger("Error writing video output frame\n", AV_LOG_ERROR, response);
-
-				v_packets_elaborated++;
-
-				ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
-			}
-			av_packet_unref(vout_packet); // wipe output packet (video) buffer data
-										  // av_frame_unref(vout_frame);	  // wipe output frame (video) buffer data
-
-			// -------------------------------- /encode video -------------------------------- //
-		}
-		av_frame_unref(vin_frame); // wipe input frame (video) buffer data
+		transcodePacketsVideo(vin_packet);
 
 		// ------------------------------- /transcode video ------------------------------ //
 
 		//lock the rec_lock before check the while condition
 		rec_lock.lock();
 	}
+}
+
+void ScreenRecorder::transcodePacketsVideo(AVPacket* vin_packet) {
+	// -------------------------------- transcode video ------------------------------ //
+
+		// let's send the input (compressed) packet to the video decoder
+		// through the video input codec context
+	response = avcodec_send_packet(vin_codec_context, vin_packet);
+	if (response < 0)
+		debugger("Error sending input (compressed) packet to the video decoder\n", AV_LOG_ERROR, response);
+
+	av_packet_unref(vin_packet); // wipe input packet (video) buffer data
+	av_packet_free(&vin_packet); // free input packet (video) buffer data
+
+	while (response == 0) {
+		// and let's (try to) receive the input uncompressed frame from the video decoder
+		// through same codec context
+		response = avcodec_receive_frame(vin_codec_context, vin_frame);
+		if (response == AVERROR(EAGAIN)) // try again
+			break;
+		else if (response < 0)
+			debugger("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
+
+		// --------------------------------- encode video -------------------------------- //
+
+		// convert (scale) from BGR to YUV
+		sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
+
+		// av_frame_unref(vin_frame); // wipe input frame (video) buffer data // TODO: change this!
+
+#if defined(__APPLE__) && defined(__MACH__)
+			// --------------------------------- filter video -------------------------------- //
+
+			// push (video) output frame into the filtergraph
+		response = av_buffersrc_add_frame_flags(buffersrc_ctx, vout_frame, AV_BUFFERSRC_FLAG_KEEP_REF);
+		if (response < 0)
+			debugger("Error while feeding the filtergraph\n", AV_LOG_ERROR, response);
+
+		// av_frame_unref(vout_frame); // wipe output frame (video) buffer data // TODO: change this!
+
+		// pull (video) output filtered frame from the filtergraph
+		response = av_buffersink_get_frame(buffersink_ctx, vout_frame_filtered);
+		if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
+			break;
+		else if (response < 0)
+			debugger("Error filtering (cropping) video input frame\n", AV_LOG_ERROR, response);
+
+		// --------------------------------- /filter video ------------------------------- //
+
+		// setting (video) output frame pts
+		vout_frame_filtered->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
+
+		// let's send the uncompressed output frame to the video encoder
+		// through the video output codec context
+		response = avcodec_send_frame(vout_codec_context, vout_frame_filtered);
+
+#elif defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
+
+			// setting (video) output frame pts
+		vout_frame->pts = ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
+
+		// let's send the uncompressed output frame to the video encoder
+		// through the video output codec context
+		response = avcodec_send_frame(vout_codec_context, vout_frame);
+
+#endif
+		while (response == 0) {
+			// and let's (try to) receive the output packet (compressed) from the video encoder
+			// through the same codec context
+			response = avcodec_receive_packet(vout_codec_context, vout_packet);
+			if (response == AVERROR(EAGAIN)) // try again
+				break;
+			else if (response < 0)
+				debugger("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
+
+			vout_packet->stream_index = vout_stream_idx; // vout_stream_idx = 0
+
+			// ----------------------- synchronize (video) ouput packet ----------------------- //
+
+			// adjusting output packet timestamps (video)
+			// av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
+			vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base,
+
+			// print output packet information (video)
+			// FIXME: fix this!
+			if (!test_flag)
+				printf(" - Video output packet: pts=%ld [dts=%ld], duration=%ld, size=%d\n",
+					vout_packet->pts, vout_packet->dts, vout_packet->duration, vout_packet->size);
+
+		 // ----------------------- /synchronize (video) ouput packet ---------------------- //
+
+		 // write frames in output packet (video)
+			av_write_frame_mtx.lock();
+			response = av_write_frame(out_format_context, vout_packet);
+			av_write_frame_mtx.unlock();
+			if (response < 0)
+				debugger("Error writing video output frame\n", AV_LOG_ERROR, response);
+
+			v_packets_elaborated++;
+
+			ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
+		}
+		av_packet_unref(vout_packet); // wipe output packet (video) buffer data
+									  // av_frame_unref(vout_frame);	  // wipe output frame (video) buffer data
+
+		// -------------------------------- /encode video -------------------------------- //
+	}
+	av_frame_unref(vin_frame); // wipe input frame (video) buffer data
+
+	// ------------------------------- /transcode video ------------------------------ //
 }
 
 void ScreenRecorder::elaboratePacketsAudio() {
