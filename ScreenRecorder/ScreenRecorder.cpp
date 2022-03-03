@@ -268,15 +268,15 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	while (rec_status != STOPPED) {
 		rec_lock.unlock();
 
-		vin_packets_q_cv.wait(queue_lock, [this]() {
+		vin_packets_q_cv.wait(queue_lock, [=]() {
 			rec_lock.lock();
-			this->rec_lock.lock();
+			rec_lock.lock();
 			//exit contition 1
 			if (rec_status == STOPPED) {
 				rec_lock.unlock();
 				return true;
 			}
-			this.rec_lock.unlock();
+			rec_lock.unlock();
 
 			//**** untoggle comments if you want lock also in reading 
 			// queue_lock.lock();
