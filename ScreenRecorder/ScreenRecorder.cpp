@@ -328,7 +328,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	}
 }
 
-void ScreenRecorder::transcodePacketsVideo(AVPacket* vin_packet) {
+void transcodePacketsVideo(AVPacket* vin_packet) {
 	// -------------------------------- transcode video ------------------------------ //
 
 		// let's send the input (compressed) packet to the video decoder
