@@ -44,8 +44,6 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	// # of elaborated packets
 	v_packets_elaborated = 0;
 
-	queue_selector = 0;
-
 	// TODO: check if I need all these global variables
 	// video initialization
 	vin_format = NULL;
@@ -270,7 +268,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	while (rec_status != STOPPED) {
 		rec_lock.unlock();
 
-		vin_packets_q_cv.wait(ul, [this]() {
+		vin_packets_q_cv.wait(queue_lock, [this]() {
 			rec_lock.lock();
 			//exit contition 1
 			if (rec_status == STOPPED) {
