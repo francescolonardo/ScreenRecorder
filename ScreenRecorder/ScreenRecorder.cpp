@@ -220,7 +220,7 @@ void ScreenRecorder::capturePacketsVideo() {
 		// TODO: remove this! (test purpose)
 		if (!test_flag)
 			cout << "Video queue size:" << vin_packets_q.size() << endl;
-		rec_lock.lock();
+		//rec_lock.lock();
 	}
 }
 
