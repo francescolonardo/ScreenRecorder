@@ -292,35 +292,38 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		});
 
 		//rec_lock.lock();
-		//TODO: if STOPPED this thread will elaborate only on packet because notify on capture will never be called again !!!!!! ***1
+		//TODO: if STOPPED this thread will elaborate only on packet because notify on capture will never be called again !!!!!! ***1 DONE
 		if (rec_status == STOPPED && !vin_packets_q.empty()) {
 			//rec_lock.unlock();
 			break;
 		}
 		//rec_lock.unlock();
 
-		//Using lock in defer mode we can free it just after
-		//we pop the packet, so the capture thread can go on
-		queue_lock.lock();
-		vin_packet = vin_packets_q.front();
-		vin_packets_q.pop();
-		queue_lock.unlock();
-
-		//TODO: ***1 in order to solve this problem all the code below MUST be moved into a new function so it can be called more times using a cicle !!!
-
-
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Video packet popped (video queue size: " << vin_packets_q.size() << ")" << endl;
-
-		// -------------------------------- transcode video ------------------------------ //
-
-		this->transcodePacketVideo(vin_packet);
-
-		// ------------------------------- /transcode video ------------------------------ //
-
+		if (rec_status == STOPPED) {
+			//if STOPPED we want to transcode all the packets in the queue
+			//in this case no one should require the lock on the queue
+			//so we can lock it just one time avoiding to lock it for every packet
+			queue_lock.lock();
+			while (!vin_packets_q.empty()) {
+				//Using lock in defer mode we can free it just after
+				//we pop the packet, so the capture thread can go on
+				vin_packet = vin_packets_q.front();
+				vin_packets_q.pop();
+				this->transcodePacketVideo(vin_packet);
+			}
+			queue_lock.unlock();
+		}
+		else {
+			//Using lock in defer mode we can free it just after
+			//we pop the packet, so the capture thread can go on
+			queue_lock.lock();
+			vin_packet = vin_packets_q.front();
+			vin_packets_q.pop();
+			queue_lock.unlock();
+			this->transcodePacketVideo(vin_packet);
+		}
 		//lock the rec_lock before check the while condition
-		rec_lock.lock();
+		//rec_lock.lock();
 	}
 }
 
