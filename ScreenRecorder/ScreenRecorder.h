@@ -193,7 +193,7 @@ private:
 	void deallocateResourcesAudio();
 
 	//Check this
-	void transcodePacketVideo();
+	void transcodePacketVideo(AVPacket*);
 
 	string getTimeRecorded(unsigned int packets_counter, unsigned int video_fps);
 
