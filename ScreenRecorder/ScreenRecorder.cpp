@@ -290,15 +290,9 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		// 	// return false;
 		// 	return (!vin_packets_q.empty());
 		// });
-		vin_packets_q_cv.wait(queue_lock, [this]() { return ((rec_status == STOPPED && !vin_packets_q.empty()) || !vin_packets_q.empty());
+		vin_packets_q_cv.wait(queue_lock, [this]() { return (((rec_status == STOPPED && !vin_packets_q.empty();) || !vin_packets_q.empty();));
 
-		//rec_lock.lock();
 		//TODO: if STOPPED this thread will elaborate only on packet because notify on capture will never be called again !!!!!! ***1 DONE
-		if (rec_status == STOPPED && !vin_packets_q.empty()) {
-			//rec_lock.unlock();
-			break;
-		}
-		//rec_lock.unlock();
 
 		if (rec_status == STOPPED) {
 			//if STOPPED we want to transcode all the packets in the queue
