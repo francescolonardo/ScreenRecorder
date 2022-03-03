@@ -266,10 +266,6 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	unique_lock<mutex> queue_lock(vin_packets_q_mtx, defer_lock);
 	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
 
-	// let's feed our input packet from the input stream
-	// until it has packets or until user hits CTRL+C
-	unsigned int ts = 0;
-	int response = 0;
 	//rec_lock.lock();
 	while (rec_status != STOPPED) {
 		//rec_lock.unlock();
@@ -329,6 +325,12 @@ void ScreenRecorder::elaboratePacketsVideo() {
 }
 
 void ScreenRecorder::transcodePacketVideo(AVPacket* vin_packet) {
+
+	// let's feed our input packet from the input stream
+	// until it has packets or until user hits CTRL+C
+	unsigned int ts = 0;
+	int response = 0;
+
 	// -------------------------------- transcode video ------------------------------ //
 
 		// let's send the input (compressed) packet to the video decoder
