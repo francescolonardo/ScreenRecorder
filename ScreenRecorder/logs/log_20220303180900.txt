@@ -1,0 +1,7 @@
+Video input codec: rawvideo (ID: 13)
+Video input codec context: pix_fmt=bgr0
+Video output codec: h264 (ID: 27)
+Audio input codec: pcm_s16le (ID: 65536)
+Audio input codec context: sample_fmt=s16
+Audio output codec: aac (ID: 86018)
+Output file format (container) name: mp4 (MP4 (MPEG-4 Part 14))
