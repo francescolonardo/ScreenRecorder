@@ -319,7 +319,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 
 		// -------------------------------- transcode video ------------------------------ //
 
-		this.transcodePacketsVideo(vin_packet);
+		this->transcodePacketVideo(vin_packet);
 
 		// ------------------------------- /transcode video ------------------------------ //
 
@@ -328,7 +328,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 	}
 }
 
-void ScreenRecorder::transcodePacketsVideo(AVPacket* vin_packet) {
+void ScreenRecorder::transcodePacketVideo(AVPacket* vin_packet) {
 	// -------------------------------- transcode video ------------------------------ //
 
 		// let's send the input (compressed) packet to the video decoder

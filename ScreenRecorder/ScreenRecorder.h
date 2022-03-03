@@ -71,11 +71,10 @@ extern "C"
 
 using namespace std;
 
-class ScreenRecorder
-{
+class ScreenRecorder {
 private:
 	// (n)curses
-	WINDOW *win;
+	WINDOW* win;
 	int inner_box_height = 3, inner_box_width = 24;
 	int rec_info_row = 0;
 
@@ -87,11 +86,11 @@ private:
 	condition_variable a_rec_status_cv;
 
 	// av queues management
-	queue<AVPacket *> vin_packets_q;
+	queue<AVPacket*> vin_packets_q;
 	mutex vin_packets_q_mtx;
 	condition_variable vin_packets_q_cv;
 
-	queue<AVPacket *> ain_packets_q;
+	queue<AVPacket*> ain_packets_q;
 	mutex ain_packets_q_mtx;
 	condition_variable ain_packets_q_cv;
 
@@ -125,46 +124,46 @@ private:
 
 	// TODO: check if I need all these global variables
 	// video
-	AVInputFormat *vin_format;
-	AVFormatContext *vin_format_context;
-	AVStream *vin_stream;
+	AVInputFormat* vin_format;
+	AVFormatContext* vin_format_context;
+	AVStream* vin_stream;
 	AVRational vin_fps;
 	int vin_stream_idx;
 	int vout_stream_idx;
-	AVCodecContext *vin_codec_context;
-	AVOutputFormat *out_format;			 // extra
-	AVFormatContext *out_format_context; // extra
-	AVStream *vout_stream;
-	AVCodecContext *vout_codec_context;
-	AVPacket *vin_packet;
-	AVFrame *vin_frame;
-	SwsContext *rescaler_context;
-	AVFrame *vout_frame;
-	AVPacket *vout_packet;
+	AVCodecContext* vin_codec_context;
+	AVOutputFormat* out_format;			 // extra
+	AVFormatContext* out_format_context; // extra
+	AVStream* vout_stream;
+	AVCodecContext* vout_codec_context;
+	AVPacket* vin_packet;
+	AVFrame* vin_frame;
+	SwsContext* rescaler_context;
+	AVFrame* vout_frame;
+	AVPacket* vout_packet;
 
 #if defined(__APPLE__) && defined(__MACH__)
-	AVFrame *vout_frame_filtered;
-	AVFilterContext *buffersink_ctx;
-	AVFilterContext *buffersrc_ctx;
-	AVFilterGraph *filter_graph;
+	AVFrame* vout_frame_filtered;
+	AVFilterContext* buffersink_ctx;
+	AVFilterContext* buffersrc_ctx;
+	AVFilterGraph* filter_graph;
 	string filter_descr;
 #endif
 
 	// audio
-	AVInputFormat *ain_format;
-	AVFormatContext *ain_format_context;
-	AVStream *ain_stream;
+	AVInputFormat* ain_format;
+	AVFormatContext* ain_format_context;
+	AVStream* ain_stream;
 	int ain_stream_idx;
 	int aout_stream_idx;
-	AVCodecContext *ain_codec_context;
-	AVStream *aout_stream;
-	AVCodecContext *aout_codec_context;
-	AVPacket *ain_packet;
-	AVFrame *ain_frame;
-	SwrContext *resampler_context;
-	AVAudioFifo *a_fifo;
-	AVFrame *aout_frame;
-	AVPacket *aout_packet;
+	AVCodecContext* ain_codec_context;
+	AVStream* aout_stream;
+	AVCodecContext* aout_codec_context;
+	AVPacket* ain_packet;
+	AVFrame* ain_frame;
+	SwrContext* resampler_context;
+	AVAudioFifo* a_fifo;
+	AVFrame* aout_frame;
+	AVPacket* aout_packet;
 
 	string getTimestamp();
 	// TODO: find other names
@@ -192,6 +191,9 @@ private:
 
 	void deallocateResourcesVideo();
 	void deallocateResourcesAudio();
+
+	//Check this
+	void transcodePacketVideo();
 
 	string getTimeRecorded(unsigned int packets_counter, unsigned int video_fps);
 
