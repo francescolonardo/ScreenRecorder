@@ -1,5 +1,3 @@
-// TODO: think if you can handle variables between functions differently (global)
-
 #include "ScreenRecorder.h"
 
 ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename, bool test_flag) : area_size(area_size), area_offsets(area_offsets), video_fps(video_fps), audio_flag(audio_flag), out_filename(out_filename), test_flag(test_flag), rec_status(STATELESS)
@@ -66,9 +64,8 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	vout_packet = NULL;
 	// audio and video output
 	// check extra part in prepareEncoderVideo
-	out_format = NULL;		   
-	out_format_context = NULL; 
-
+	out_format = NULL;
+	out_format_context = NULL;
 
 	// audio initialization
 	if (audio_flag)
@@ -176,45 +173,34 @@ void ScreenRecorder::record()
 
 void ScreenRecorder::capturePacketsVideo()
 {
-	// unique_lock<mutex> ul(v_rec_status_mtx);
-	unique_lock<mutex> queue_selector_lock(queue_selector_mtx);
+	unique_lock<mutex> queue_lock(vin_packets_q_mtx, defer_lock);
+	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
 
 	string time_str;
 	AVPacket *tmp_vin_packet;
+	rec_lock.lock();
 	while (rec_status != STOPPED)
 	{
+		rec_lock.unlock();
 		// v_rec_status_cv.wait(ul, [this]() { return rec_status != PAUSED; });
 
 		tmp_vin_packet = av_packet_alloc();
 		if (av_read_frame(vin_format_context, tmp_vin_packet) == 0)
 		{
+			rec_lock.lock();
 			if (rec_status == PAUSED)
 			{
 				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
 				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
+				rec_lock.unlock();
 			}
 			else
 			{
-				//commit comment
-				if(queue_selector==0){
-					if(vin_packets_q.size()==10){
-						queue_selector_lock.lock();
-						queue_selector = 1;
-						queue_selector_lock.unlock();
-					}
-				}	
-				else if(queue_selector == 1){
-					if(vin_packets_q1.size()==10){
-						queue_selector_lock.lock();
-						queue_selector = 0;
-						queue_selector_lock.unlock();
-					}
-				}
-				
-				if(queue_selector == 0)
-					vin_packets_q.push(tmp_vin_packet);
-				else
-					vin_packets_q1.push(tmp_vin_packet);
+				rec_lock.unlock();
+
+				queue_lock.lock();
+				vin_packets_q.push(tmp_vin_packet);
+				queue_lock.unlock();
 
 				vin_packets_q_cv.notify_one(); // notify elaboratePacketsVideo()
 
@@ -250,6 +236,7 @@ void ScreenRecorder::capturePacketsVideo()
 		// TODO: remove this! (test purpose)
 		if (!test_flag)
 			cout << "Video queue size:" << vin_packets_q.size() << endl;
+		rec_lock.lock();
 	}
 }
 
@@ -290,6 +277,7 @@ void ScreenRecorder::capturePacketsAudio()
 
 void ScreenRecorder::elaboratePacketsVideo()
 {
+	// TODO remove queue selector and implement unique lock deferred then implement lock on status
 	unique_lock<mutex> ul(vin_packets_q_mtx);
 
 	// let's feed our input packet from the input stream
@@ -298,20 +286,22 @@ void ScreenRecorder::elaboratePacketsVideo()
 	int response = 0;
 	while (rec_status != STOPPED)
 	{
-		vin_packets_q_cv.wait(ul, [this](){ return (rec_status == STOPPED || (queue_selector==1 && !vin_packets_q.empty()) || (queue_selector==0 && !vin_packets_q1.empty()) ); }); // TODO: improve this!
+		vin_packets_q_cv.wait(ul, [this]()
+							  { return (rec_status == STOPPED || (queue_selector == 1 && !vin_packets_q.empty()) || (queue_selector == 0 && !vin_packets_q1.empty())); }); // TODO: improve this!
 
 		if (rec_status == STOPPED)
 			break;
 
-		if(queue_selector == 1){
+		if (queue_selector == 1)
+		{
 			vin_packet = vin_packets_q.front();
 			vin_packets_q.pop();
 		}
-		else{
+		else
+		{
 			vin_packet = vin_packets_q1.front();
 			vin_packets_q1.pop();
 		}
-
 
 		// TODO: remove this! (test purpose)
 		if (!test_flag)
@@ -676,7 +666,7 @@ void ScreenRecorder::openInputDeviceVideo()
 #if defined(__linux__)
 	screen_device = "x11grab";
 #elif defined(_WIN32) || defined(__CYGWIN__)
-	screen_device = "gdigrab"; 
+	screen_device = "gdigrab";
 #elif defined(__APPLE__) && defined(__MACH__)
 	screen_device = "avfoundation";
 #endif
@@ -684,7 +674,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	// AVInputFormat holds the header information from the input format (container)
 	vin_format = av_find_input_format(screen_device.c_str());
 	if (!vin_format)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Unknow screen device\n", AV_LOG_ERROR, 0);
 
 	// getting current display information
@@ -698,7 +688,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	{
 		snprintf(tmp_str, sizeof(tmp_str), "Cannot open current display (%s)\n",
 				 screen_number.c_str());
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger(tmp_str, AV_LOG_WARNING, 0);
 	}
 	// get current screen's size
@@ -735,12 +725,12 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	value = av_dict_set(&vin_options, "pixel_format", "bgr0", 0); // bgr0 or yuyv422 or uyvy422
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (pixel_format)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
 	value = av_dict_set(&vin_options, "video_size", area_size.c_str(), 0);
-	//TODO: debugger can be removed - throw std::runtime_error
+	// TODO: debugger can be removed - throw std::runtime_error
 	if (value < 0)
 		debugger("Error setting video input options (video_size)\n", AV_LOG_ERROR, value);
 #elif defined(__APPLE__) && defined(__MACH__)
@@ -759,30 +749,30 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	value = av_dict_set(&vin_options, "framerate", video_fps.c_str(), 0);
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (framerate)\n", AV_LOG_ERROR, value);
 
 	value = av_dict_set(&vin_options, "preset", "fast", 0);
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__)
 	value = av_dict_set(&vin_options, "show_region", "1", 0); // https://stackoverflow.com/questions/52863787/record-region-of-screen-using-ffmpeg
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (show_region)\n", AV_LOG_ERROR, value);
 #endif
 
 	value = av_dict_set(&vin_options, "probesize", "20M", 0); // https://stackoverflow.com/questions/57903639/why-getting-and-how-to-fix-the-warning-error-on-ffmpeg-not-enough-frames-to-es
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (probesize)\n", AV_LOG_ERROR, value);
 
 	// opening screen url
 	value = avformat_open_input(&vin_format_context, screen_url.c_str(), vin_format, &vin_options);
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
 
 	// stream (packets' flow) information analysis
@@ -790,7 +780,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	// this function populates vin_format_context->streams (with vin_format_context->nb_streams streams)
 	value = avformat_find_stream_info(vin_format_context, &vin_options);
 	if (value < 0)
-		//TODO: debugger can be removed - throw std::runtime_error
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot find stream (video) information\n", AV_LOG_ERROR, value);
 
 	av_dict_free(&vin_options);
@@ -1009,8 +999,8 @@ void ScreenRecorder::prepareEncoderVideo()
 	vout_codec_context->width = vin_codec_context->width;
 	vout_codec_context->height = vin_codec_context->height;
 #elif defined(__APPLE__) && defined(__MACH__)
-	vout_codec_context->width = stoi(area_width); //TODO: change in area_width_macOs
-	vout_codec_context->height = stoi(area_height);//TODO: change in area_height_macOs
+	vout_codec_context->width = stoi(area_width);	// TODO: change in area_width_macOs
+	vout_codec_context->height = stoi(area_height); // TODO: change in area_height_macOs
 #endif
 
 	vout_codec_context->pix_fmt = vout_codec->pix_fmts ? vout_codec->pix_fmts[0] : AV_PIX_FMT_YUV420P;
@@ -1079,7 +1069,7 @@ void ScreenRecorder::prepareEncoderVideo()
 	if (value < 0)
 		debugger("Unable to copy video output stream parameters from video output codec context\n", AV_LOG_ERROR, value);
 
-	//TODO: move this part away
+	// TODO: move this part away
 	mvwprintw(win, rec_info_row++, 0, "- stream #0 (video) %s, %s", avcodec_get_name(vout_codec_context->codec_id), av_get_pix_fmt_name(vout_codec_context->pix_fmt)); // (n)curses
 	if (!audio_flag)
 		wrefresh(win);
@@ -1433,7 +1423,7 @@ void ScreenRecorder::changeRecStatus()
 			if (!test_flag)
 			{
 #if defined(_WIN32) || defined(__CYGWIN__)
-				pressed_char = getchar_win(); // windows API 
+				pressed_char = getchar_win(); // windows API
 #endif
 			}
 			else

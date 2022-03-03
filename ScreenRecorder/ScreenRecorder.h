@@ -87,10 +87,7 @@ private:
 	condition_variable a_rec_status_cv;
 
 	// av queues management
-	int queue_selector;
-	mutex queue_selector_mtx;
 	queue<AVPacket *> vin_packets_q;
-	queue<AVPacket *> vin_packets_q1;
 	mutex vin_packets_q_mtx;
 	condition_variable vin_packets_q_cv;
 
