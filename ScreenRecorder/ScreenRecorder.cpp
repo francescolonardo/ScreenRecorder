@@ -242,7 +242,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 				//we pop the packet, so the capture thread can go on
 				vin_packet = vin_packets_q.front();
 				vin_packets_q.pop();
-				this->transcodePacketVideo(vin_packet);
+				this->transcodePacketsVideo(vin_packet);
 			}
 			queue_lock.unlock();
 		}
