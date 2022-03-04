@@ -234,7 +234,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			//if STOPPED we want to transcode all the packets in the queue
 			//in this case no one should require the lock on the queue
 			//so we can lock it just one time avoiding to lock it for every packet
-			while (v_packets_captured != v_packets_elaborated) {
+			while (!vin_packets_q.empty()) {
 				//Using lock in defer mode we can free it just after
 				//we pop the packet, so the capture thread can go on
 				vin_packet = vin_packets_q.front();
