@@ -163,64 +163,64 @@ void ScreenRecorder::capturePacketsVideo() {
 	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
 
 	string time_str;
-	AVPacket * tmp_vin_packet;#
+	AVPacket* tmp_vin_packet;
 
-		while (rec_status != STOPPED) {
+	while (rec_status != STOPPED) {
 
-			tmp_vin_packet = av_packet_alloc();
-			if (av_read_frame(vin_format_context, tmp_vin_packet) == 0) {
-
-
-				if (rec_status == PAUSED) {
-					av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
-					av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
-
-				}
-				else {
+		tmp_vin_packet = av_packet_alloc();
+		if (av_read_frame(vin_format_context, tmp_vin_packet) == 0) {
 
 
-					//put the packet in the queue then notify
-					//-------
-					queue_lock.lock();
-					vin_packets_q.push(tmp_vin_packet);
-					queue_lock.unlock();
-					vin_packets_q_cv.notify_one();
-					//-------
-
-					v_packets_captured++;
-
-					// (n)curses in the middle
-					wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
-					mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
-
-					// fix an uncommon problem on Windows // TODO: go deep!
-					wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
-
-					wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
-					time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
-					mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
-
-					// fix an uncommon problem on Windows // TODO: go deep!
-					wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
-					wclrtoeol(win); // erase from the cursor's current location to the end of the row
-
-					wrefresh(win);
-				}
-			}
-			else {
-				// TODO: check this!
+			if (rec_status == PAUSED) {
 				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
 				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
-			}
 
-			// TODO: remove this! (test purpose)
-			if (!test_flag)
-				cout << "Video queue size:" << vin_packets_q.size() << endl;
-			//rec_lock.lock();
+			}
+			else {
+
+
+				//put the packet in the queue then notify
+				//-------
+				queue_lock.lock();
+				vin_packets_q.push(tmp_vin_packet);
+				queue_lock.unlock();
+				vin_packets_q_cv.notify_one();
+				//-------
+
+				v_packets_captured++;
+
+				// (n)curses in the middle
+				wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+				mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
+
+				// fix an uncommon problem on Windows // TODO: go deep!
+				wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+
+				wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+				time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
+				mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
+
+				// fix an uncommon problem on Windows // TODO: go deep!
+				wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
+				wclrtoeol(win); // erase from the cursor's current location to the end of the row
+
+				wrefresh(win);
+			}
 		}
+		else {
+			// TODO: check this!
+			av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
+			av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
+		}
+
+		// TODO: remove this! (test purpose)
+		if (!test_flag)
+			cout << "Video queue size:" << vin_packets_q.size() << endl;
+		//rec_lock.lock();
+	}
 }
 
 void ScreenRecorder::capturePacketsAudio() {
