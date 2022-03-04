@@ -430,7 +430,7 @@ void ScreenRecorder::capturePacketsAudio() {
 
 		tmp_ain_packet = av_packet_alloc();
 		if (av_read_frame(ain_format_context, tmp_ain_packet) == 0) {
-			rec_status_ul.lock()
+			rec_status_ul.lock();
 			if (rec_status == PAUSED) {
 				rec_status_ul.unlock();
 				av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
