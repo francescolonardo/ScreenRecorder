@@ -227,7 +227,6 @@ void ScreenRecorder::capturePacketsVideo() {
 void ScreenRecorder::elaboratePacketsVideo() {
 
 	while (true) {
-
 		unique_lock<mutex> queue_lock(vin_packets_q_mtx);
 		vin_packets_q_cv.wait(queue_lock, [this]() {return (!vin_packets_q.empty());});
 
@@ -243,6 +242,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 				this->transcodePacketsVideo(vin_packet);
 			}
 			queue_lock.unlock();
+			break;
 		}
 
 		else {
