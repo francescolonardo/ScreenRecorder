@@ -223,44 +223,6 @@ void ScreenRecorder::capturePacketsVideo() {
 	}
 }
 
-void ScreenRecorder::capturePacketsAudio() {
-	unique_lock<mutex> queue_lock(ain_packets_q_mtx, defer_lock);
-	unique_lock<mutex> rec_lock(a_rec_status_mtx, defer_lock);
-
-	//TODO: have to choose if implement the rec lock on read or not 
-
-	AVPacket* tmp_ain_packet;
-	while (rec_status != STOPPED) {
-		// a_rec_status_cv.wait(ul, [this]() { return rec_status != PAUSED; });
-
-		tmp_ain_packet = av_packet_alloc();
-		if (av_read_frame(ain_format_context, tmp_ain_packet) == 0) {
-			if (rec_status == PAUSED) {
-				av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
-				av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
-			}
-			else {
-				queue_lock.lock();
-				ain_packets_q.push(tmp_ain_packet);
-				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
-				queue_lock.unlock();
-
-				// notify elaboratePacketsAudio()
-				ain_packets_q_cv.notify_one();
-			}
-		}
-		else {
-			 // TODO: check this!
-			av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
-			av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
-		}
-
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Audio queue size:" << ain_packets_q.size() << endl;
-	}
-}
-
 void ScreenRecorder::elaboratePacketsVideo() {
 
 	while (rec_status != STOPPED) {
@@ -288,14 +250,14 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			vin_packet = vin_packets_q.front();
 			vin_packets_q.pop();
 			queue_lock.unlock();
-			this->transcodePacketVideo(vin_packet);
+			this->transcodePacketsVideo(vin_packet);
 		}
 		//lock the rec_lock before check the while condition
 		//rec_lock.lock();
 	}
 }
 
-void ScreenRecorder::transcodePacketVideo(AVPacket* vin_packet) {
+void ScreenRecorder::transcodePacketsVideo(AVPacket* vin_packet) {
 
 	// let's feed our input packet from the input stream
 	// until it has packets or until user hits CTRL+C
@@ -409,6 +371,44 @@ void ScreenRecorder::transcodePacketVideo(AVPacket* vin_packet) {
 	av_frame_unref(vin_frame); // wipe input frame (video) buffer data
 
 	// ------------------------------- /transcode video ------------------------------ //
+}
+
+void ScreenRecorder::capturePacketsAudio() {
+	unique_lock<mutex> queue_lock(ain_packets_q_mtx, defer_lock);
+	unique_lock<mutex> rec_lock(a_rec_status_mtx, defer_lock);
+
+	//TODO: have to choose if implement the rec lock on read or not 
+
+	AVPacket* tmp_ain_packet;
+	while (rec_status != STOPPED) {
+		// a_rec_status_cv.wait(ul, [this]() { return rec_status != PAUSED; });
+
+		tmp_ain_packet = av_packet_alloc();
+		if (av_read_frame(ain_format_context, tmp_ain_packet) == 0) {
+			if (rec_status == PAUSED) {
+				av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
+				av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
+			}
+			else {
+				queue_lock.lock();
+				ain_packets_q.push(tmp_ain_packet);
+				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
+				queue_lock.unlock();
+
+				// notify elaboratePacketsAudio()
+				ain_packets_q_cv.notify_one();
+			}
+		}
+		else {
+			 // TODO: check this!
+			av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
+			av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
+		}
+
+		// TODO: remove this! (test purpose)
+		if (!test_flag)
+			cout << "Audio queue size:" << ain_packets_q.size() << endl;
+	}
 }
 
 void ScreenRecorder::elaboratePacketsAudio() {
