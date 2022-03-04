@@ -1353,45 +1353,36 @@ void ScreenRecorder::changeRecStatus()
 		rec_status_ul.lock(); // *** recording status mutex lock()
 		if (rec_status == RECORDING && (pressed_char == 'p' || pressed_char == 'P'))
 		{
-			rec_status = PAUSED;
 			rec_status_ul.unlock(); // *** recording status mutex unlock()
-
-			/*
-			v_rec_status_cv.notify_one();
-			if (audio_flag)
-				a_rec_status_cv.notify_one();
-			*/
 
 			// *** CLI key detected [pause]
 			cli.cliKeyDetectedPause();
+
+			rec_status_ul.lock(); // *** recording status mutex lock()
+			rec_status = PAUSED;
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
 		}
 		else if (rec_status == PAUSED && (pressed_char == 'r' || pressed_char == 'R'))
 		{
-			rec_status = RECORDING;
 			rec_status_ul.unlock(); // *** recording status mutex unlock()
-
-			/*
-			v_rec_status_cv.notify_one();
-			if (audio_flag)
-				a_rec_status_cv.notify_one();
-			*/
 
 			// *** CLI key detected [record]
 			cli.cliKeyDetectedRecord();
+
+			rec_status_ul.lock(); // *** recording status mutex lock()
+			rec_status = RECORDING;
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
 		}
 		else if (pressed_char == 's' || pressed_char == 'S')
 		{
-			rec_status = STOPPED;
 			rec_status_ul.unlock(); // *** recording status mutex unlock()
-
-			/*
-			v_rec_status_cv.notify_one();
-			if (audio_flag)
-				a_rec_status_cv.notify_one();
-			*/
 
 			// *** CLI key detected [stop]
 			cli.cliKeyDetectedStop();
+
+			rec_status_ul.lock(); // *** recording status mutex lock()
+			rec_status = STOPPED;
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
 
 			break;
 		}

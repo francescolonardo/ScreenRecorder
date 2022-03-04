@@ -94,7 +94,7 @@ void CommandLineInterface::cliKeyDetectedPause()
 	mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
 
 	wrefresh(win);
-	napms(750);
+	napms(500);
 
 	wmove(win, 0, COLS - pressed_char_str.length());
 	wclrtoeol(win);
@@ -115,7 +115,7 @@ void CommandLineInterface::cliKeyDetectedRecord()
 	mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
 
 	wrefresh(win);
-	napms(750);
+	napms(500);
 
 	wmove(win, 0, COLS - pressed_char_str.length());
 	wclrtoeol(win);
@@ -136,7 +136,7 @@ void CommandLineInterface::cliKeyDetectedStop()
 	mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
 
 	wrefresh(win);
-	napms(750);
+	napms(500);
 
 	wmove(win, 0, COLS - pressed_char_str.length());
 	wclrtoeol(win);
