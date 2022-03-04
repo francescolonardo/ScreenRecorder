@@ -163,64 +163,64 @@ void ScreenRecorder::capturePacketsVideo() {
 	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
 
 	string time_str;
-	AVPacket* tmp_vin_packet;
-	//rec_lock.lock();
-	while (rec_status != STOPPED) {
-		//rec_lock.unlock();
+	AVPacket * tmp_vin_packet;#
 
-		tmp_vin_packet = av_packet_alloc();
-		if (av_read_frame(vin_format_context, tmp_vin_packet) == 0) {
-			//rec_lock.lock();
+		while (rec_status != STOPPED) {
 
-			if (rec_status == PAUSED) {
-				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
-				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
-				//rec_lock.unlock();
+			tmp_vin_packet = av_packet_alloc();
+			if (av_read_frame(vin_format_context, tmp_vin_packet) == 0) {
+
+
+				if (rec_status == PAUSED) {
+					av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
+					av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
+
+				}
+				else {
+
+
+					//put the packet in the queue then notify
+					//-------
+					queue_lock.lock();
+					vin_packets_q.push(tmp_vin_packet);
+					queue_lock.unlock();
+					vin_packets_q_cv.notify_one();
+					//-------
+
+					v_packets_captured++;
+
+					// (n)curses in the middle
+					wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+					wclrtoeol(win); // erase from the cursor's current location to the end of the row
+					mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
+
+					// fix an uncommon problem on Windows // TODO: go deep!
+					wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
+					wclrtoeol(win); // erase from the cursor's current location to the end of the row
+
+					wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
+					wclrtoeol(win); // erase from the cursor's current location to the end of the row
+					time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
+					mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
+
+					// fix an uncommon problem on Windows // TODO: go deep!
+					wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
+					wclrtoeol(win); // erase from the cursor's current location to the end of the row
+
+					wrefresh(win);
+				}
 			}
 			else {
-				//rec_lock.unlock();
-
-				//put the packet in the queue
-				queue_lock.lock();
-				vin_packets_q.push(tmp_vin_packet);
-				// notify elaboratePacketsVideo()
-				queue_lock.unlock();
-				vin_packets_q_cv.notify_one();
-
-				v_packets_captured++;
-
-				// (n)curses in the middle
-				wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-				mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
-
-				// fix an uncommon problem on Windows // TODO: go deep!
-				wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-
-				wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-				time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
-				mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
-
-				// fix an uncommon problem on Windows // TODO: go deep!
-				wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-
-				wrefresh(win);
+				// TODO: check this!
+				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
+				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
 			}
-		}
-		else {
-			// TODO: check this!
-			av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
-			av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
-		}
 
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Video queue size:" << vin_packets_q.size() << endl;
-		//rec_lock.lock();
-	}
+			// TODO: remove this! (test purpose)
+			if (!test_flag)
+				cout << "Video queue size:" << vin_packets_q.size() << endl;
+			//rec_lock.lock();
+		}
 }
 
 void ScreenRecorder::capturePacketsAudio() {
@@ -262,32 +262,8 @@ void ScreenRecorder::capturePacketsAudio() {
 }
 
 void ScreenRecorder::elaboratePacketsVideo() {
-	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
 
-	//rec_lock.lock();
 	while (rec_status != STOPPED) {
-		//rec_lock.unlock();
-
-		// vin_packets_q_cv.wait(queue_lock, [this, &rec_lock]() {
-		// 	//rec_lock.lock();
-		// 	//exit contition 1
-		// 	if (rec_status == STOPPED) {
-		// 		//rec_lock.unlock();
-		// 		return true;
-		// 	}
-		// 	//rec_lock.unlock();
-
-		// 	//**** untoggle comments if you want lock also in reading 
-		// 	// queue_lock.lock();
-		// 	// //exit contition 2
-		// 	// if(!vin_packets_q.empty()){
-		// 	// 	queue_lock.unlock();
-		// 	// 	return true;
-		// 	// }
-		// 	// queue_lock.unlock()
-		// 	// return false;
-		// 	return (!vin_packets_q.empty());
-		// });
 		unique_lock<mutex> queue_lock(vin_packets_q_mtx);
 		vin_packets_q_cv.wait(queue_lock, [this]() {return (((rec_status == STOPPED && !vin_packets_q.empty()) || !vin_packets_q.empty()));});
 
@@ -309,7 +285,6 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		else {
 			//Using lock in defer mode we can free it just after
 			//we pop the packet, so the capture thread can go on
-			queue_lock.lock();
 			vin_packet = vin_packets_q.front();
 			vin_packets_q.pop();
 			queue_lock.unlock();
