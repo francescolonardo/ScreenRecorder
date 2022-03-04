@@ -186,7 +186,6 @@ void ScreenRecorder::capturePacketsVideo() {
 				// notify elaboratePacketsVideo()
 				queue_lock.unlock();
 				vin_packets_q_cv.notify_one();
-				//TODO: there were a rule that said that you have to unlock after you notifyed ???????
 
 				v_packets_captured++;
 
@@ -263,7 +262,6 @@ void ScreenRecorder::capturePacketsAudio() {
 }
 
 void ScreenRecorder::elaboratePacketsVideo() {
-	unique_lock<mutex> queue_lock(vin_packets_q_mtx, defer_lock);
 	unique_lock<mutex> rec_lock(v_rec_status_mtx, defer_lock);
 
 	//rec_lock.lock();
@@ -290,15 +288,15 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		// 	// return false;
 		// 	return (!vin_packets_q.empty());
 		// });
+		unique_lock<mutex> queue_lock(vin_packets_q_mtx);
 		vin_packets_q_cv.wait(queue_lock, [this]() {return (((rec_status == STOPPED && !vin_packets_q.empty()) || !vin_packets_q.empty()));});
 
-	//TODO: if STOPPED this thread will elaborate only on packet because notify on capture will never be called again !!!!!! ***1 DONE
+	//TODO: if STOPPED, this thread will elaborates only on packet because notify on capture will never be called again !!!!!! ***1 DONE
 
 		if (rec_status == STOPPED) {
 			//if STOPPED we want to transcode all the packets in the queue
 			//in this case no one should require the lock on the queue
 			//so we can lock it just one time avoiding to lock it for every packet
-			queue_lock.lock();
 			while (!vin_packets_q.empty()) {
 				//Using lock in defer mode we can free it just after
 				//we pop the packet, so the capture thread can go on
