@@ -167,7 +167,7 @@ void ScreenRecorder::capturePacketsVideo() {
 
 	while (rec_status != STOPPED) {
 
-		v_rec_status_cv.wait(v_rec_status_mtx, []() {return rec_status == RECORDING});
+		v_rec_status_cv.wait(v_rec_status_mtx, []() {return rec_status == RECORDING;});
 
 		tmp_vin_packet = av_packet_alloc();
 		if (av_read_frame(vin_format_context, tmp_vin_packet) == 0) {
