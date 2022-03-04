@@ -180,7 +180,6 @@ void ScreenRecorder::capturePacketsVideo() {
 			}
 			else {
 
-
 				//put the packet in the queue then notify
 				//-------
 				queue_lock.lock();
@@ -227,11 +226,10 @@ void ScreenRecorder::capturePacketsVideo() {
 
 void ScreenRecorder::elaboratePacketsVideo() {
 
-	while (rec_status != STOPPED) {
-		unique_lock<mutex> queue_lock(vin_packets_q_mtx);
-		vin_packets_q_cv.wait(queue_lock, [this]() {return (((rec_status == STOPPED && !vin_packets_q.empty()) || !vin_packets_q.empty()));});
+	while (true) {
 
-	//TODO: if STOPPED, this thread will elaborates only on packet because notify on capture will never be called again !!!!!! ***1 DONE
+		unique_lock<mutex> queue_lock(vin_packets_q_mtx);
+		vin_packets_q_cv.wait(queue_lock, [this]() {return (!vin_packets_q.empty());});
 
 		if (rec_status == STOPPED) {
 			//if STOPPED we want to transcode all the packets in the queue
@@ -246,6 +244,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			}
 			queue_lock.unlock();
 		}
+
 		else {
 			//Using lock in defer mode we can free it just after
 			//we pop the packet, so the capture thread can go on
