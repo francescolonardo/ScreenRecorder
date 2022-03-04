@@ -225,7 +225,6 @@ void ScreenRecorder::capturePacketsVideo() {
 }
 
 void ScreenRecorder::elaboratePacketsVideo() {
-
 	while (true) {
 		unique_lock<mutex> queue_lock(vin_packets_q_mtx);
 		vin_packets_q_cv.wait(queue_lock, [this]() {return (!vin_packets_q.empty());});
@@ -245,6 +244,7 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			break;
 		}
 
+		//RECORDING or PAUSE
 		else {
 			//Using lock in defer mode we can free it just after
 			//we pop the packet, so the capture thread can go on
