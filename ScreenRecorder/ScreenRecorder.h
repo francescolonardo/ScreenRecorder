@@ -1,13 +1,14 @@
 #ifndef SCREENRECORDER_H
 #define SCREENRECORDER_H
 
+#include "CommandLineInterface.h"
+
 #if defined(__linux__)
 #define PLATFORM_NAME "linux" // Linux
 #include <X11/Xlib.h>
 #include <ncurses.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
-#include <windows.h>
 #include <curses.h>
 #ifdef WINDOWS
 #include "ListAVDevices.h"
@@ -74,13 +75,11 @@ using namespace std;
 class ScreenRecorder
 {
 private:
-	// (n)curses
-	WINDOW *win;
-	int inner_box_height = 3, inner_box_width = 24;
-	int rec_info_row = 0;
+	CommandLineInterface cli{};
 
 	// rec_status change management
 	uint8_t rec_status;
+	mutex rec_status_mtx;
 	mutex v_rec_status_mtx;
 	mutex a_rec_status_mtx;
 	condition_variable v_rec_status_cv;
@@ -96,6 +95,10 @@ private:
 
 	// av_frame(...) mutual exclusion
 	mutex av_write_frame_mtx;
+
+	// captured/elaborated packets mutual esclusion
+	mutex v_packets_captured_mtx;
+	mutex v_packets_elaborated_mtx;
 
 	// executable's parameters
 	string area_size, area_offsets;
@@ -113,7 +116,7 @@ private:
 	// globals' definition
 	char tmp_str[100];
 	int value;
-	unsigned int v_packets_captured, v_packets_elaborated; // counters
+	uint64_t v_packets_captured, v_packets_elaborated; // counters
 
 	// threads' pointers
 	unique_ptr<thread> capture_video_thrd;
@@ -186,6 +189,7 @@ private:
 	void capturePacketsVideo();
 	void capturePacketsAudio();
 	void elaboratePacketsVideo();
+	void writePacketVideo(AVPacket *vin_packet, uint64_t ref_ts, int ref_response);
 	void elaboratePacketsAudio();
 	void changeRecStatus();
 
@@ -199,9 +203,9 @@ private:
 #endif
 
 public:
-	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename, bool test_flag);
+	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
 	~ScreenRecorder();
 	void record();
 };
 
-#endif
+#endif // SCREENRECORDER_H

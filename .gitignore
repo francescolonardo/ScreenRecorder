@@ -1,8 +1,13 @@
+*.DS_Store
 # ignore tests
-ScreenRecorder/test_*
+ScreenRecorder/test_WIN
 # ignore all logs
 logs/*
+ScreenRecorder/logs/*
 # ignore audio/video files
 *.aac
 *.mp4
 *.avi
+# executables
+main
+main.exe

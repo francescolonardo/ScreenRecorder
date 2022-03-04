@@ -2,47 +2,19 @@
 
 #include "ScreenRecorder.h"
 
-ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename, bool test_flag) : area_size(area_size), area_offsets(area_offsets), video_fps(video_fps), audio_flag(audio_flag), out_filename(out_filename), test_flag(test_flag), rec_status(STATELESS)
+ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename) : area_size(area_size), area_offsets(area_offsets), video_fps(video_fps), audio_flag(audio_flag), out_filename(out_filename), rec_status(STATELESS)
 {
 	// print error messages only
 	av_log_set_level(AV_LOG_ERROR);
 
-	// -------------- (n)curses ----------- //
-	// initializes the screen
-	initscr();
-	noecho();
-	// raw(); // TODO: check this!
-	curs_set(0); // hide cursor
-
-	win = newwin(LINES, COLS, 0, 0);
-	refresh(); //  need to draw the root window
-			   //  without this, apparently the child (win) never draw
-
-	// mvwprintw(win, rec_info_row++, 0, "Welcome to ScreenRecorder!");
-	mvwprintw(win, rec_info_row++, 0, "Recording area: %s from (%s)", area_size.c_str(), area_offsets.c_str());
-	mvwprintw(win, rec_info_row++, 0, "Selected video fps: %s", video_fps.c_str());
-	mvwprintw(win, rec_info_row++, 0, "Recording audio: %s", audio_flag ? "yes" : "no");
-	mvwprintw(win, rec_info_row++, 0, "Output file: %s", out_filename.c_str());
-
-	string press_any_str = "Press any key to start recording...";
-	mvwprintw(win, LINES - 1, COLS - press_any_str.length(), press_any_str.c_str());
-
-	wrefresh(win);
-
-	char ch = getch(); // waiting for a key
-
-	wmove(win, rec_info_row, 0);
-	wclrtobot(win); // erases the window's rows from the cursor's current location, downwards
-
-	wrefresh(win);
-
-	// TODO: implement it!
-
-	// ------------- /(n)curses ----------- //
+	// *** CLI - start window
+	cli.cliStartWindow(area_size, area_offsets, video_fps, audio_flag, out_filename);
 
 	// globals' initialization
 	value = 0;
+	// # of captured packets
 	v_packets_captured = 0;
+	// # of elaborated packets
 	v_packets_elaborated = 0;
 
 	// TODO: check if I need all these global variables
@@ -53,8 +25,6 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	vin_stream_idx = 0;
 	vout_stream_idx = 0;
 	vin_codec_context = NULL;
-	out_format = NULL;		   // extra
-	out_format_context = NULL; // extra
 	vout_stream = NULL;
 	vout_codec_context = NULL;
 	vin_packet = NULL;
@@ -62,6 +32,10 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	rescaler_context = NULL;
 	vout_frame = NULL;
 	vout_packet = NULL;
+	// audio and video output
+	// check extra part in prepareEncoderVideo
+	out_format = NULL;
+	out_format_context = NULL;
 
 	// audio initialization
 	if (audio_flag)
@@ -104,6 +78,9 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 
 	// output init
 	prepareOutputFile();
+
+	// *** CLI - key actions (pause, stop, record) info
+	cli.cliKeyActionsInfo();
 }
 
 ScreenRecorder::~ScreenRecorder()
@@ -126,24 +103,8 @@ ScreenRecorder::~ScreenRecorder()
 
 	// TODO: remember to clean everything (e.g. tmp_str)
 
-	// -------------- (n)curses ----------- //
-	napms(1000);
-	werase(win);
-
-	mvwprintw(win, 0, 0, "Output file `%s` successfully saved.", out_filename.c_str());
-	string press_exit_str = "Press any key to exit...";
-	mvwprintw(win, LINES - 1, COLS - press_exit_str.length(), press_exit_str.c_str());
-	wrefresh(win);
-
-	char ch = getch(); // wait for a key
-
-	werase(win);
-	wrefresh(win);
-
-	// deallocates memory and ends curses
-	delwin(win);
-	endwin();
-	// -------------- /(n)curses ---------- //
+	// *** CLI - end window
+	cli.cliEndWindow(out_filename);
 }
 
 void ScreenRecorder::record()
@@ -169,48 +130,43 @@ void ScreenRecorder::record()
 
 void ScreenRecorder::capturePacketsVideo()
 {
-	// unique_lock<mutex> ul(v_rec_status_mtx);
+	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock);		// *** recording status lock
+	unique_lock<mutex> vin_packets_q_ul{vin_packets_q_mtx, defer_lock}; // *** video input packets queue lock
+	unique_lock<mutex> v_packets_captured_ul{v_packets_captured_mtx, defer_lock};
+	unique_lock<mutex> v_packets_elaborated_ul{v_packets_elaborated_mtx, defer_lock};
 
-	string time_str;
 	AVPacket *tmp_vin_packet;
+
+	rec_status_ul.lock(); // *** recording status mutex lock()
 	while (rec_status != STOPPED)
 	{
+		rec_status_ul.unlock(); // *** recording status mutex unlock()
+
 		// v_rec_status_cv.wait(ul, [this]() { return rec_status != PAUSED; });
 
 		tmp_vin_packet = av_packet_alloc();
 		if (av_read_frame(vin_format_context, tmp_vin_packet) == 0)
 		{
+			rec_status_ul.lock(); // *** recording status mutex lock()
 			if (rec_status == PAUSED)
 			{
+				rec_status_ul.unlock(); // *** recording status mutex unlock()
+
 				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
 				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
 			}
 			else
 			{
+				rec_status_ul.unlock(); // *** recording status mutex unlock()
+
+				vin_packets_q_ul.lock(); // *** video input packets queue mutex lock()
 				vin_packets_q.push(tmp_vin_packet);
+				vin_packets_q_ul.unlock();	   // *** video input packets queue mutex unlock()
 				vin_packets_q_cv.notify_one(); // notify elaboratePacketsVideo()
 
+				v_packets_captured_ul.lock();
 				v_packets_captured++;
-
-				// (n)curses in the middle
-				wmove(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-				mvwprintw(win, 1 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "frames=[%d/%d]", v_packets_elaborated, v_packets_captured);
-
-				// fix an uncommon problem on Windows // TODO: go deep!
-				wmove(win, 1 + (LINES - inner_box_height) / 2, 10 + int(log10(v_packets_elaborated) + 1) + int(log10(v_packets_captured) + 1) + (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-
-				wmove(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-				time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
-				mvwprintw(win, 2 + (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "time=%s", time_str.c_str());
-
-				// fix an uncommon problem on Windows // TODO: go deep!
-				wmove(win, 2 + (LINES - inner_box_height) / 2, 17 + (COLS - inner_box_width) / 2);
-				wclrtoeol(win); // erase from the cursor's current location to the end of the row
-
-				wrefresh(win);
+				v_packets_captured_ul.unlock();
 			}
 		}
 		else // TODO: check this!
@@ -219,16 +175,12 @@ void ScreenRecorder::capturePacketsVideo()
 			av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
 		}
 
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Video queue size:" << vin_packets_q.size() << endl;
+		rec_status_ul.lock(); // *** recording status mutex lock()
 	}
 }
 
 void ScreenRecorder::capturePacketsAudio()
 {
-	// unique_lock<mutex> ul(a_rec_status_mtx);
-
 	AVPacket *tmp_ain_packet;
 	while (rec_status != STOPPED)
 	{
@@ -253,37 +205,40 @@ void ScreenRecorder::capturePacketsAudio()
 			av_packet_unref(tmp_ain_packet); // wipe input packet (audio) buffer data (queue)
 			av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
 		}
-
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Audio queue size:" << ain_packets_q.size() << endl;
 	}
 }
 
 void ScreenRecorder::elaboratePacketsVideo()
 {
-	unique_lock<mutex> ul(vin_packets_q_mtx);
+	unique_lock<mutex> vin_packets_q_ul{vin_packets_q_mtx, defer_lock}; // *** video input packets queue lock
+	unique_lock<mutex> v_packets_captured_ul{v_packets_captured_mtx, defer_lock};
 
 	// let's feed our input packet from the input stream
 	// until it has packets or until user hits CTRL+C
-	unsigned int ts = 0;
+	uint64_t ts = 0;
 	int response = 0;
-	while (rec_status != STOPPED)
-	{
-		vin_packets_q_cv.wait(ul, [this]()
-							  { return rec_status == STOPPED || !vin_packets_q.empty(); }); // TODO: improve this!
 
-		if (rec_status == STOPPED)
-			break;
+	vin_packets_q_ul.lock(); // *** video input packets queue mutex lock()
+	while (rec_status != STOPPED || !vin_packets_q.empty())
+	{
+
+		vin_packets_q_cv.wait(vin_packets_q_ul, [this]()
+							  { return !vin_packets_q.empty(); }); // TODO: improve this!
 
 		vin_packet = vin_packets_q.front();
 		vin_packets_q.pop();
+		vin_packets_q_ul.unlock(); // *** video input packets queue mutex unlock()
 
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Video packet popped (video queue size: " << vin_packets_q.size() << ")" << endl;
+		/*
+		FIXME:
+		uint64_t &ref_ts = ts;
+		int &ref_response = response;
+		writePacketVideo(vin_packet, ref_ts, ref_response);
+		*/
 
 		// -------------------------------- transcode video ------------------------------ //
+		unique_lock<mutex> v_packets_elaborated_ul{v_packets_elaborated_mtx, defer_lock};
+		unique_lock<mutex> av_write_frame_ul{av_write_frame_mtx, defer_lock};
 
 		// let's send the input (compressed) packet to the video decoder
 		// through the video input codec context
@@ -365,22 +320,18 @@ void ScreenRecorder::elaboratePacketsVideo()
 				// av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
 				vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base,
 
-				// print output packet information (video)
-				// FIXME: fix this!
-				if (!test_flag)
-					printf(" - Video output packet: pts=%ld [dts=%ld], duration=%ld, size=%d\n",
-						   vout_packet->pts, vout_packet->dts, vout_packet->duration, vout_packet->size);
-
 				// ----------------------- /synchronize (video) ouput packet ---------------------- //
 
 				// write frames in output packet (video)
-				av_write_frame_mtx.lock();
+				av_write_frame_ul.lock();
 				response = av_write_frame(out_format_context, vout_packet);
-				av_write_frame_mtx.unlock();
+				av_write_frame_ul.unlock();
 				if (response < 0)
 					debugger("Error writing video output frame\n", AV_LOG_ERROR, response);
 
+				v_packets_elaborated_ul.lock();
 				v_packets_elaborated++;
+				v_packets_elaborated_ul.unlock();
 
 				ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
 			}
@@ -392,12 +343,135 @@ void ScreenRecorder::elaboratePacketsVideo()
 		av_frame_unref(vin_frame); // wipe input frame (video) buffer data
 
 		// ------------------------------- /transcode video ------------------------------ //
+
+		// *** CLI - show frames and time
+		v_packets_captured_ul.lock();
+		string time_str = getTimeRecorded(v_packets_captured, vin_fps.num);
+		v_packets_elaborated_ul.lock();
+		cli.cliFramesTimeCentered(v_packets_elaborated, v_packets_captured, time_str);
+		v_packets_elaborated_ul.unlock();
+		v_packets_captured_ul.unlock();
+
+		vin_packets_q_ul.lock(); // *** video input packets queue mutex lock()
 	}
+}
+
+void ScreenRecorder::writePacketVideo(AVPacket *vin_packet, uint64_t ref_ts, int ref_response)
+{
+	unique_lock<mutex> v_packets_elaborated_ul{v_packets_elaborated_mtx, defer_lock};
+	unique_lock<mutex> av_write_frame_ul{av_write_frame_mtx, defer_lock};
+
+	// -------------------------------- transcode video ------------------------------ //
+
+	// let's send the input (compressed) packet to the video decoder
+	// through the video input codec context
+	ref_response = avcodec_send_packet(vin_codec_context, vin_packet);
+	if (ref_response < 0)
+		debugger("Error sending input (compressed) packet to the video decoder\n", AV_LOG_ERROR, ref_response);
+
+	av_packet_unref(vin_packet); // wipe input packet (video) buffer data
+	av_packet_free(&vin_packet); // free input packet (video) buffer data
+
+	while (ref_response == 0)
+	{
+		// and let's (try to) receive the input uncompressed frame from the video decoder
+		// through same codec context
+		ref_response = avcodec_receive_frame(vin_codec_context, vin_frame);
+		if (ref_response == AVERROR(EAGAIN)) // try again
+			break;
+		else if (ref_response < 0)
+			debugger("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, ref_response);
+
+		// --------------------------------- encode video -------------------------------- //
+
+		// convert (scale) from BGR to YUV
+		sws_scale(rescaler_context, vin_frame->data, vin_frame->linesize, 0, vin_codec_context->height, vout_frame->data, vout_frame->linesize);
+
+		// av_frame_unref(vin_frame); // wipe input frame (video) buffer data // TODO: change this!
+
+#if defined(__APPLE__) && defined(__MACH__)
+		// --------------------------------- filter video -------------------------------- //
+
+		// push (video) output frame into the filtergraph
+		ref_response = av_buffersrc_add_frame_flags(buffersrc_ctx, vout_frame, AV_BUFFERSRC_FLAG_KEEP_REF);
+		if (ref_response < 0)
+			debugger("Error while feeding the filtergraph\n", AV_LOG_ERROR, ref_response);
+
+		// av_frame_unref(vout_frame); // wipe output frame (video) buffer data // TODO: change this!
+
+		// pull (video) output filtered frame from the filtergraph
+		ref_response = av_buffersink_get_frame(buffersink_ctx, vout_frame_filtered);
+		if (ref_response == AVERROR(EAGAIN) || ref_response == AVERROR_EOF)
+			break;
+		else if (ref_response < 0)
+			debugger("Error filtering (cropping) video input frame\n", AV_LOG_ERROR, ref_response);
+
+		// --------------------------------- /filter video ------------------------------- //
+
+		// setting (video) output frame pts
+		vout_frame_filtered->pts = ref_ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
+
+		// let's send the uncompressed output frame to the video encoder
+		// through the video output codec context
+		ref_response = avcodec_send_frame(vout_codec_context, vout_frame_filtered);
+
+#elif defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
+
+		// setting (video) output frame pts
+		vout_frame->pts = ref_ts; // = av_rescale_q(vin_frame->pts, vout_stream->time_base, vin_stream->time_base);
+
+		// let's send the uncompressed output frame to the video encoder
+		// through the video output codec context
+		ref_response = avcodec_send_frame(vout_codec_context, vout_frame);
+
+#endif
+		while (ref_response == 0)
+		{
+			// and let's (try to) receive the output packet (compressed) from the video encoder
+			// through the same codec context
+			ref_response = avcodec_receive_packet(vout_codec_context, vout_packet);
+			if (ref_response == AVERROR(EAGAIN)) // try again
+				break;
+			else if (ref_response < 0)
+				debugger("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, ref_response);
+
+			vout_packet->stream_index = vout_stream_idx; // vout_stream_idx = 0
+
+			// ----------------------- synchronize (video) ouput packet ----------------------- //
+
+			// adjusting output packet timestamps (video)
+			// av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
+			vout_packet->pts = vout_packet->dts = ref_ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base,
+
+			// ----------------------- /synchronize (video) ouput packet ---------------------- //
+
+			// write frames in output packet (video)
+			av_write_frame_ul.lock();
+			ref_response = av_write_frame(out_format_context, vout_packet);
+			av_write_frame_ul.unlock();
+			if (ref_response < 0)
+				debugger("Error writing video output frame\n", AV_LOG_ERROR, ref_response);
+
+			v_packets_elaborated_ul.lock();
+			v_packets_elaborated++;
+			v_packets_elaborated_ul.unlock();
+
+			ref_ts += av_rescale_q(1, vout_codec_context->time_base, vout_stream->time_base);
+		}
+		av_packet_unref(vout_packet); // wipe output packet (video) buffer data
+									  // av_frame_unref(vout_frame);	  // wipe output frame (video) buffer data
+
+		// -------------------------------- /encode video -------------------------------- //
+	}
+	av_frame_unref(vin_frame); // wipe input frame (video) buffer data
+
+	// ------------------------------- /transcode video ------------------------------ //
 }
 
 void ScreenRecorder::elaboratePacketsAudio()
 {
 	unique_lock<mutex> ul(ain_packets_q_mtx);
+	unique_lock<mutex> av_write_frame_ul{av_write_frame_mtx, defer_lock};
 
 	int response = 0;
 	uint64_t ts = 1024; // FIXME: fix this!
@@ -414,10 +488,6 @@ void ScreenRecorder::elaboratePacketsAudio()
 
 		ain_packet = ain_packets_q.front();
 		ain_packets_q.pop();
-
-		// TODO: remove this! (test purpose)
-		if (!test_flag)
-			cout << "Audio packet popped (audio queue size: " << ain_packets_q.size() << ")" << endl;
 
 		// -------------------------------- transcode audio ------------------------------- //
 
@@ -523,18 +593,12 @@ void ScreenRecorder::elaboratePacketsAudio()
 						aout_packet->pts = aout_packet->dts = 0;
 					*/
 
-					// print output packet information (audio)
-					// FIXME: fix this!
-					if (!test_flag)
-						printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
-							   aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
-
 					// ---------------------- /synchronize (audio) output packet ---------------------- //
 
 					// write frames in output packet (audio)
-					av_write_frame_mtx.lock();
+					av_write_frame_ul.lock();
 					response = av_interleaved_write_frame(out_format_context, aout_packet);
-					av_write_frame_mtx.unlock();
+					av_write_frame_ul.unlock();
 					if (response < 0)
 						debugger("Error writing audio output frame\n", AV_LOG_ERROR, response);
 
@@ -637,12 +701,12 @@ void ScreenRecorder::openInputDeviceVideo()
 	// registering devices
 	avdevice_register_all(); // Must be executed, otherwise av_find_input_format() fails
 
-	// specifying the screen device as: x11grab (Linux), dshow (Windows) or avfoundation (Mac)
+	// specifying the screen device as: x11grab (Linux), gdigrab (Windows) or avfoundation (Mac)
 	string screen_device;
 #if defined(__linux__)
 	screen_device = "x11grab";
 #elif defined(_WIN32) || defined(__CYGWIN__)
-	screen_device = "gdigrab"; // = "dshow";
+	screen_device = "gdigrab";
 #elif defined(__APPLE__) && defined(__MACH__)
 	screen_device = "avfoundation";
 #endif
@@ -650,6 +714,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	// AVInputFormat holds the header information from the input format (container)
 	vin_format = av_find_input_format(screen_device.c_str());
 	if (!vin_format)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Unknow screen device\n", AV_LOG_ERROR, 0);
 
 	// getting current display information
@@ -663,6 +728,7 @@ void ScreenRecorder::openInputDeviceVideo()
 	{
 		snprintf(tmp_str, sizeof(tmp_str), "Cannot open current display (%s)\n",
 				 screen_number.c_str());
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger(tmp_str, AV_LOG_WARNING, 0);
 	}
 	// get current screen's size
@@ -670,14 +736,6 @@ void ScreenRecorder::openInputDeviceVideo()
 	screen_width = to_string(screen->width);
 	screen_height = to_string(screen->height);
 	XCloseDisplay(display);
-
-	// print current display information
-	if (!test_flag)
-	{
-		snprintf(tmp_str, sizeof(tmp_str), "Current display: %s, %sx%s\n",
-				 screen_number.c_str(), screen_width.c_str(), screen_height.c_str());
-		debugger(tmp_str, AV_LOG_INFO, 0);
-	}
 
 	// setting screen_url basing on screen_number and area_offests
 	// TODO: add area_size and area_offsets check (towards current screen's size)
@@ -699,44 +757,54 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	value = av_dict_set(&vin_options, "pixel_format", "bgr0", 0); // bgr0 or yuyv422 or uyvy422
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (pixel_format)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
 	value = av_dict_set(&vin_options, "video_size", area_size.c_str(), 0);
+	// TODO: debugger can be removed - throw std::runtime_error
 	if (value < 0)
 		debugger("Error setting video input options (video_size)\n", AV_LOG_ERROR, value);
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: check this!
+	// area_size: 1920x1200
 	int delimiter1_pos = area_size.find("x");
 	area_width = area_size.substr(0, delimiter1_pos);
 	area_height = area_size.substr(delimiter1_pos + 1, area_size.length());
+	// area_offset: 0,0
 	int delimiter2_pos = area_offsets.find(",");
 	area_x_offset = area_offsets.substr(0, delimiter2_pos);
 	area_y_offset = area_offsets.substr(delimiter2_pos + 1, area_offsets.length());
+	// cropping basing on the input values
 	filter_descr = "crop=" + area_width + ":" + area_height + ":" + area_x_offset + ":" + area_y_offset;
 #endif
 
 	value = av_dict_set(&vin_options, "framerate", video_fps.c_str(), 0);
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (framerate)\n", AV_LOG_ERROR, value);
 
 	value = av_dict_set(&vin_options, "preset", "fast", 0);
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__)
 	value = av_dict_set(&vin_options, "show_region", "1", 0); // https://stackoverflow.com/questions/52863787/record-region-of-screen-using-ffmpeg
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (show_region)\n", AV_LOG_ERROR, value);
 #endif
 
 	value = av_dict_set(&vin_options, "probesize", "20M", 0); // https://stackoverflow.com/questions/57903639/why-getting-and-how-to-fix-the-warning-error-on-ffmpeg-not-enough-frames-to-es
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (probesize)\n", AV_LOG_ERROR, value);
 
 	// opening screen url
 	value = avformat_open_input(&vin_format_context, screen_url.c_str(), vin_format, &vin_options);
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
 
 	// stream (packets' flow) information analysis
@@ -744,16 +812,10 @@ void ScreenRecorder::openInputDeviceVideo()
 	// this function populates vin_format_context->streams (with vin_format_context->nb_streams streams)
 	value = avformat_find_stream_info(vin_format_context, &vin_options);
 	if (value < 0)
+		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot find stream (video) information\n", AV_LOG_ERROR, value);
 
 	av_dict_free(&vin_options);
-
-	// print input file (video) information
-	if (!test_flag)
-	{
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ input device (video) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-		av_dump_format(vin_format_context, 0, screen_url.c_str(), 0);
-	}
 }
 
 void ScreenRecorder::openInputDeviceAudio()
@@ -812,29 +874,21 @@ void ScreenRecorder::openInputDeviceAudio()
 		debugger("Cannot find stream (audio) information\n", AV_LOG_ERROR, value);
 
 	av_dict_free(&ain_options);
-
-	// print input file (video) information
-	if (!test_flag)
-	{
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ input device (audio) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-		av_dump_format(ain_format_context, 0, mic_url.c_str(), 0);
-	}
 }
 
 void ScreenRecorder::prepareDecoderVideo()
 {
 	// we have to find a stream (stream type: AVMEDIA_TYPE_VIDEO)
+	// value will be the index of the found stream
 	value = av_find_best_stream(vin_format_context, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
 	if (value < 0)
 		debugger("Cannot find a video stream in the input file\n", AV_LOG_ERROR, value);
+
 	int vin_stream_idx = value; // vin_stream_idx = 0
 
 	// this is the input video stream
 	vin_stream = vin_format_context->streams[vin_stream_idx];
 
-	// FIXME: fix this!
-	// guessing input stream (video) framerate
-	// vin_fps = av_guess_frame_rate(vin_format_context, vin_stream, NULL);
 	vin_fps = AVRational{stoi(video_fps), 1};
 
 	// the component that knows how to decode the stream it's the codec
@@ -860,17 +914,6 @@ void ScreenRecorder::prepareDecoderVideo()
 	value = avcodec_open2(vin_codec_context, vin_codec, NULL);
 	if (value < 0)
 		debugger("Unable to turn on the video decoder\n", AV_LOG_ERROR, value);
-
-	// print (video) input codec context name
-	if (!test_flag)
-	{
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ codecs/stream (video) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-		snprintf(tmp_str, sizeof(tmp_str), "Video input codec: %s (ID: %d)\n", avcodec_get_name(vin_codec_context->codec_id), vin_codec_context->codec_id);
-		debugger(tmp_str, AV_LOG_INFO, 0);
-		// print (video) input codec context pixel format
-		snprintf(tmp_str, sizeof(tmp_str), "Video input codec context: pix_fmt=%s\n", av_get_pix_fmt_name(vin_codec_context->pix_fmt));
-		debugger(tmp_str, AV_LOG_INFO, 0);
-	}
 }
 
 void ScreenRecorder::prepareDecoderAudio()
@@ -907,17 +950,6 @@ void ScreenRecorder::prepareDecoderAudio()
 	value = avcodec_open2(ain_codec_context, ain_codec, NULL);
 	if (value < 0)
 		debugger("Unable to turn on the audio decoder\n", AV_LOG_ERROR, value);
-
-	// print (audio) input codec context name
-	if (!test_flag)
-	{
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ codecs/stream (audio) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-		snprintf(tmp_str, sizeof(tmp_str), "Audio input codec: %s (ID: %d)\n", avcodec_get_name(ain_codec_context->codec_id), ain_codec_context->codec_id);
-		debugger(tmp_str, AV_LOG_INFO, 0);
-		// print (audio) input codec context sample format
-		snprintf(tmp_str, sizeof(tmp_str), "Audio input codec context: sample_fmt=%s\n", av_get_sample_fmt_name(ain_codec_context->sample_fmt));
-		debugger(tmp_str, AV_LOG_INFO, 0);
-	}
 }
 
 void ScreenRecorder::prepareEncoderVideo()
@@ -951,31 +983,16 @@ void ScreenRecorder::prepareEncoderVideo()
 	if (!vout_codec_context)
 		debugger("Failed to allocate memory for the video encoding context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 
-	// print (video) output codec context name
-	if (!test_flag)
-	{
-		snprintf(tmp_str, sizeof(tmp_str), "Video output codec: %s (ID: %d)\n", avcodec_get_name(vout_codec_context->codec_id), vout_codec_context->codec_id);
-		debugger(tmp_str, AV_LOG_INFO, 0);
-	}
-
-	// setting up (video) output codec context properties
-	// vout_codec_context->codec_id = out_format_context->video_codec; // AV_CODEC_ID_H264; AV_CODEC_ID_MPEG4; AV_CODEC_ID_MPEG1VIDEO // useless
-	// vout_codec_context->codec_type = AVMEDIA_TYPE_VIDEO; // useless
-
+		// setting up output codec context parameters taking them from the input codec contex
 #if defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
 	vout_codec_context->width = vin_codec_context->width;
 	vout_codec_context->height = vin_codec_context->height;
 #elif defined(__APPLE__) && defined(__MACH__)
-	vout_codec_context->width = stoi(area_width);
-	vout_codec_context->height = stoi(area_height);
+	vout_codec_context->width = stoi(area_width);	// TODO: change in area_width_macOs
+	vout_codec_context->height = stoi(area_height); // TODO: change in area_height_macOs
 #endif
 
 	vout_codec_context->pix_fmt = vout_codec->pix_fmts ? vout_codec->pix_fmts[0] : AV_PIX_FMT_YUV420P;
-
-	// print (video) output codec context properties
-	// FIXME: fix this!
-	if (!test_flag)
-		printf("Video output codec context: pix_fmt=%s\n", av_get_pix_fmt_name(vout_codec_context->pix_fmt));
 
 	// other (video) output codec context properties
 	// total_bitrate = file_size / duration
@@ -996,11 +1013,6 @@ void ScreenRecorder::prepareEncoderVideo()
 	vout_codec_context->time_base.num = 1;
 	vout_codec_context->time_base.den = vin_fps.num; // av_inv_q(vin_fps);
 	// vout_codec_context->framerate = vin_fps;		 // useless (I think)
-
-	// print other (video) output codec context properties
-	// FIXME: fix this!
-	if (!test_flag)
-		printf("Video output codec context: time_base=%d/%d\n", vout_codec_context->time_base.num, vout_codec_context->time_base.den);
 
 	// setting up (video) ouptut options for the demuxer
 	// https://trac.ffmpeg.org/wiki/Encode/H.264
@@ -1038,9 +1050,8 @@ void ScreenRecorder::prepareEncoderVideo()
 	if (value < 0)
 		debugger("Unable to copy video output stream parameters from video output codec context\n", AV_LOG_ERROR, value);
 
-	mvwprintw(win, rec_info_row++, 0, "- stream #0 (video) %s, %s", avcodec_get_name(vout_codec_context->codec_id), av_get_pix_fmt_name(vout_codec_context->pix_fmt)); // (n)curses
-	if (!audio_flag)
-		wrefresh(win);
+	// *** CLI - video stream info
+	cli.cliVideoStreamInfo(avcodec_get_name(vout_codec_context->codec_id), av_get_pix_fmt_name(vout_codec_context->pix_fmt), audio_flag);
 }
 
 void ScreenRecorder::prepareEncoderAudio()
@@ -1062,13 +1073,6 @@ void ScreenRecorder::prepareEncoderAudio()
 	if (!aout_codec_context)
 		debugger("Failed to allocate memory for the audio encoding context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 
-	// print (audio) output codec context name
-	if (!test_flag)
-	{
-		snprintf(tmp_str, sizeof(tmp_str), "Audio output codec: %s (ID: %d)\n", avcodec_get_name(aout_codec_context->codec_id), aout_codec_context->codec_id);
-		debugger(tmp_str, AV_LOG_INFO, 0);
-	}
-
 	// setting up (audio) output codec context properties
 	// useless: aout_codec_context->codec_id = out_format_context->audio_codec; // AV_CODEC_ID_AAC;
 	// useless: aout_codec_context->codec_type = AVMEDIA_TYPE_AUDIO;
@@ -1080,27 +1084,11 @@ void ScreenRecorder::prepareEncoderAudio()
 	// FIXME: fix this!
 	aout_codec_context->bit_rate = 96 * 1000; // 96 kbps
 
-	// print (audio) output codec context properties // FIXME: fix this!
-	if (!test_flag)
-		printf("Audio output codec context: sample_fmt=%s, sample_rate=%d, channels=%d, channel_layout=%ld, bit_rate=%ld\n",
-			   av_get_sample_fmt_name(aout_codec_context->sample_fmt),
-			   aout_codec_context->sample_rate,
-			   aout_codec_context->channels,
-			   aout_codec_context->channel_layout,
-			   aout_codec_context->bit_rate);
-
 	// allow the use of the experimental AAC encoder
 	aout_codec_context->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
 
 	// setting up (audio) output codec context timebase
 	aout_codec_context->time_base = (AVRational){1, ain_codec_context->sample_rate}; // = ain_stream->time_base;
-
-	// print other (audio) output codec context properties
-	// FIXME: fix this!
-	if (!test_flag)
-		printf("Audio output codec context: time_base=%d/%d, sample_rate=%d\n",
-			   aout_codec_context->time_base.num, aout_codec_context->time_base.den,
-			   aout_codec_context->sample_rate);
 
 	// turns on the (audio) encoder
 	// so we can proceed to the encoding process
@@ -1116,15 +1104,8 @@ void ScreenRecorder::prepareEncoderAudio()
 	// setting up (audio) output stream timebase
 	// aout_stream->time_base = aout_codec_context->time_base; // TODO: check this!
 
-	// print (audio) output stream information
-	// FIXME: fix this!
-	if (!test_flag)
-		printf("Audio output stream: bit_rate=%ld, time_base=%d/%d\n",
-			   aout_stream->codecpar->bit_rate,
-			   aout_stream->time_base.num, aout_stream->time_base.den);
-
-	mvwprintw(win, rec_info_row++, 0, "- stream #1 (audio) %s, %d Hz, %d kbps", avcodec_get_name(aout_codec_context->codec_id), aout_codec_context->sample_rate, (aout_codec_context->bit_rate / 1000)); // (n)curses
-	wrefresh(win);
+	// *** CLI - audio stream info
+	cli.cliAudioStreamInfo(avcodec_get_name(aout_codec_context->codec_id), aout_codec_context->sample_rate, aout_codec_context->sample_rate);
 }
 
 void ScreenRecorder::prepareCaptureVideo()
@@ -1134,6 +1115,7 @@ void ScreenRecorder::prepareCaptureVideo()
 	vin_packet = av_packet_alloc();
 	if (!vin_packet)
 		debugger("Failed to allocate memory for the video input packet\n", AV_LOG_ERROR, AVERROR(ENOMEM));
+
 	vin_frame = av_frame_alloc();
 	if (!vin_frame)
 		debugger("Failed to allocate memory for the video input frame\n", AV_LOG_ERROR, AVERROR(ENOMEM));
@@ -1141,21 +1123,15 @@ void ScreenRecorder::prepareCaptureVideo()
 	// initialize rescaler context
 	// if input and output pixel formats differ, a conversion is required
 	// (from BGR to YUV)
-	// TODO: delete this!
 	rescaler_context = sws_getContext(
 		vin_codec_context->width, vin_codec_context->height, vin_codec_context->pix_fmt,
 		vin_codec_context->width, vin_codec_context->height, vout_codec_context->pix_fmt,
 		SWS_BILINEAR, NULL, NULL, NULL); // SWS_DIRECT_BGR or SWS_BILINEAR ???
-	/* // TODO: use this!
-	rescaler_context = sws_getContext(
-		vin_codec_context->width, vin_codec_context->height, vin_codec_context->pix_fmt,
-		vout_codec_context->width, vout_codec_context->height, vout_codec_context->pix_fmt,
-		SWS_BILINEAR, NULL, NULL, NULL); // SWS_DIRECT_BGR or SWS_BILINEAR ???
-	*/
+
 	if (!rescaler_context)
 		debugger("Failed to allocate memory for the video rescaler context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 
-	// we need a (video) output frame to store ???
+	// we need a (video) output frame because of the rescaling (converting from bgr to yuv)
 	// (for temporary storage)
 	vout_frame = av_frame_alloc();
 	if (!vout_frame)
@@ -1348,140 +1324,89 @@ void ScreenRecorder::prepareOutputFile()
 	// av_opt_set(vout_codec_context->priv_data, "movflags", "frag_keyframe+delay_moov", 0);
 	// av_opt_set_int(vout_codec_context->priv_data, "crf", 28, AV_OPT_SEARCH_CHILDREN); // change `cq` to `crf` if using libx264
 
-	// some advanced container file (e.g. mp4) requires header information
+	// an advanced container file (e.g. mp4) requires header information
 	value = avformat_write_header(out_format_context, &hdr_options);
 	if (value < 0)
 		debugger("Error writing the output file header\n", AV_LOG_ERROR, value);
 
 	// cout << "Output file header writed" << endl;
 	av_dict_free(&hdr_options);
-
-	// print output file information
-	if (!test_flag)
-	{
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ output file ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-		snprintf(tmp_str, sizeof(tmp_str), "Output file format (container) name: %s (%s)\n", out_format_context->oformat->name, out_format_context->oformat->long_name);
-		debugger(tmp_str, AV_LOG_INFO, 0);
-		av_dump_format(out_format_context, 0, out_filename.c_str(), 1);
-
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ capture ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-	}
 }
 
 void ScreenRecorder::changeRecStatus()
 {
+	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock); // *** recording status lock
+
 	char pressed_char;
-	set<char> accepted_chars = {'p', 'P', 's', 'S', 'r', 'R'};
+	set<char> accepted_chars = {'p', 'P', 'r', 'R', 's', 'S'};
 	set<char>::iterator iter;
-	string pressed_char_str;
-	string time_str;
 
-	string help_str = "Press: [p] to pause, [r] to record, [s] to stop";
-	mvwprintw(win, LINES - 1, COLS - help_str.length(), help_str.c_str());
-	mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "RECORDING...");
-
-	wrefresh(win);
-
-	while (rec_status != STOPPED)
+	while (true)
 	{
+
 		do
 		{
-			if (!test_flag)
-			{
-#if defined(_WIN32) || defined(__CYGWIN__)
-				pressed_char = getchar_win(); // windows API
-#endif
-			}
-			else
-				pressed_char = getch(); // wait for a key // (n)curses
-
-			// cout << "PRESSED: " << pressed_char << endl;
+			pressed_char = getch(); // waiting for a key // (n)curses
 			iter = accepted_chars.find(pressed_char);
 		} while (iter == accepted_chars.end());
 
-		if ((pressed_char == 'p' || pressed_char == 'P') && rec_status == RECORDING)
+		rec_status_ul.lock(); // *** recording status mutex lock()
+		if (rec_status == RECORDING && (pressed_char == 'p' || pressed_char == 'P'))
 		{
-			// flash();
-			wmove(win, 0, COLS - pressed_char_str.length());
-			wclrtoeol(win);
-			pressed_char_str = "Detected [p]";
-			mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
-
-			wrefresh(win);
-			napms(750);
-
-			wmove(win, 0, COLS - pressed_char_str.length());
-			wclrtoeol(win);
-
-			wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-			wclrtoeol(win);
-			mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "PAUSED.");
-
-			wrefresh(win);
-
 			rec_status = PAUSED;
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
+
+			/*
+			v_rec_status_cv.notify_one();
+			if (audio_flag)
+				a_rec_status_cv.notify_one();
+			*/
+
+			// *** CLI key detected [pause]
+			cli.cliKeyDetectedPause();
 		}
-		else if ((pressed_char == 'r' || pressed_char == 'R') && rec_status == PAUSED)
+		else if (rec_status == PAUSED && (pressed_char == 'r' || pressed_char == 'R'))
 		{
-			// flash();
-			wmove(win, 0, COLS - pressed_char_str.length());
-			wclrtoeol(win);
-			pressed_char_str = "Detected [r]";
-			mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
-
-			wrefresh(win);
-			napms(750);
-
-			wmove(win, 0, COLS - pressed_char_str.length());
-			wclrtoeol(win);
-
-			wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-			wclrtoeol(win);
-			mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "RECORDING...");
-
-			wrefresh(win);
-
 			rec_status = RECORDING;
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
+
+			/*
+			v_rec_status_cv.notify_one();
+			if (audio_flag)
+				a_rec_status_cv.notify_one();
+			*/
+
+			// *** CLI key detected [record]
+			cli.cliKeyDetectedRecord();
 		}
 		else if (pressed_char == 's' || pressed_char == 'S')
 		{
-			// flash();
-			wmove(win, 0, COLS - pressed_char_str.length());
-			wclrtoeol(win);
-			pressed_char_str = "Detected [s]";
-			mvwprintw(win, 0, COLS - pressed_char_str.length(), pressed_char_str.c_str());
-
-			wrefresh(win);
-			napms(750);
-
-			wmove(win, 0, COLS - pressed_char_str.length());
-			wclrtoeol(win);
-
-			wmove(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2);
-			wclrtoeol(win);
-			mvwprintw(win, (LINES - inner_box_height) / 2, (COLS - inner_box_width) / 2, "STOPPED!");
-
-			wrefresh(win);
-
 			rec_status = STOPPED;
-		}
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
 
-		v_rec_status_cv.notify_one();
-		if (audio_flag)
-			a_rec_status_cv.notify_one();
+			/*
+			v_rec_status_cv.notify_one();
+			if (audio_flag)
+				a_rec_status_cv.notify_one();
+			*/
+
+			// *** CLI key detected [stop]
+			cli.cliKeyDetectedStop();
+
+			break;
+		}
+		else
+			rec_status_ul.unlock(); // *** recording status mutex unlock()
 	}
 }
 
 void ScreenRecorder::deallocateResourcesVideo()
 {
-	if (!test_flag)
-		cout << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ deallocation ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-
 	// close (video) input format context
 	if (vin_format_context)
 	{
 		avformat_close_input(&vin_format_context);
-		if (!vin_format_context && !test_flag)
+		if (!vin_format_context)
 			debugger("Video input format context closed successfully\n", AV_LOG_INFO, 0);
 		else if (vin_format_context)
 			debugger("Unable to close video input format context\n", AV_LOG_WARNING, 0);
@@ -1491,7 +1416,7 @@ void ScreenRecorder::deallocateResourcesVideo()
 	if (vin_format_context)
 	{
 		avformat_free_context(vin_format_context);
-		if (!vin_format_context && !test_flag)
+		if (!vin_format_context)
 			debugger("Video input format context freed successfully\n", AV_LOG_INFO, 0);
 		else if (vin_format_context)
 			debugger("Unable to free video input format context\n", AV_LOG_WARNING, 0);
@@ -1505,7 +1430,7 @@ void ScreenRecorder::deallocateResourcesVideo()
 	if (vin_codec_context)
 	{
 		avcodec_free_context(&vin_codec_context);
-		if (!vin_codec_context && !test_flag)
+		if (!vin_codec_context)
 			debugger("Video input codec context freed successfully\n", AV_LOG_INFO, 0);
 		else if (vin_format_context)
 			debugger("Unable to free video input codec context\n", AV_LOG_WARNING, 0);
@@ -1566,7 +1491,7 @@ void ScreenRecorder::deallocateResourcesAudio()
 	if (ain_format_context)
 	{
 		avformat_close_input(&ain_format_context);
-		if (!ain_format_context && !test_flag)
+		if (!ain_format_context)
 			debugger("Audio input format context closed successfully\n", AV_LOG_INFO, 0);
 		else if (vin_format_context)
 			debugger("Unable to close audio input format context\n", AV_LOG_WARNING, 0);
@@ -1576,7 +1501,7 @@ void ScreenRecorder::deallocateResourcesAudio()
 	if (ain_format_context)
 	{
 		avformat_free_context(ain_format_context);
-		if (!ain_format_context && !test_flag)
+		if (!ain_format_context)
 			debugger("Audio input format context freed successfully\n", AV_LOG_INFO, 0);
 		else if (vin_format_context)
 			debugger("Unable to free audio input format context\n", AV_LOG_WARNING, 0);
@@ -1586,7 +1511,7 @@ void ScreenRecorder::deallocateResourcesAudio()
 	if (ain_codec_context)
 	{
 		avcodec_free_context(&ain_codec_context);
-		if (!ain_codec_context && !test_flag)
+		if (!ain_codec_context)
 			debugger("Audio input codec context freed successfully\n", AV_LOG_INFO, 0);
 		else if (vin_format_context)
 			debugger("Unable to free audio input codec context\n", AV_LOG_WARNING, 0);
@@ -1655,22 +1580,3 @@ string ScreenRecorder::getTimeRecorded(unsigned int packets_counter, unsigned in
 
 	return time_str;
 }
-
-#if defined(_WIN32) || defined(__CYGWIN__)
-char ScreenRecorder::getchar_win()
-{
-	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-	INPUT_RECORD irInputRecord;
-	DWORD dwEventsRead;
-	char cChar;
-
-	while (ReadConsoleInputA(hStdin, &irInputRecord, 1, &dwEventsRead)) /* Read key press */
-		if (irInputRecord.EventType == KEY_EVENT && irInputRecord.Event.KeyEvent.wVirtualKeyCode != VK_SHIFT && irInputRecord.Event.KeyEvent.wVirtualKeyCode != VK_MENU && irInputRecord.Event.KeyEvent.wVirtualKeyCode != VK_CONTROL)
-		{
-			cChar = irInputRecord.Event.KeyEvent.uChar.AsciiChar;
-			ReadConsoleInputA(hStdin, &irInputRecord, 1, &dwEventsRead); /* Read key release */
-			return cChar;
-		}
-	return EOF;
-}
-#endif
