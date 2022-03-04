@@ -467,7 +467,7 @@ void ScreenRecorder::elaboratePacketsAudio() {
 	rec_status_ul.lock();
 	while (rec_status != STOPPED || !vin_packets_q.empty()) {
 		rec_status_ul.unlock();
-		ain_packets_q_cv.wait(ain_packets_q_ul, [this]() {!ain_packets_q.empty(); });
+		ain_packets_q_cv.wait(ain_packets_q_ul, [this]() { return (!ain_packets_q.empty()); });
 
 		ain_packet = ain_packets_q.front();
 		ain_packets_q.pop();
