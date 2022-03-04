@@ -437,6 +437,7 @@ void ScreenRecorder::capturePacketsAudio() {
 				av_packet_free(&tmp_ain_packet); // free input packet (audio) buffer data (queue)
 			}
 			else {
+				rec_status_ul.unlock();
 				ain_packets_q_ul.lock();
 				ain_packets_q.push(tmp_ain_packet);
 				ain_packets_q_ul.unlock();
