@@ -1,0 +1,3 @@
+Current display: :0, 1600x900
+Cannot open screen url
+Invalid argument

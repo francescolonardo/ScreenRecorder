@@ -1,0 +1,3 @@
+Video input codec: rawvideo (ID: 13)
+Video input codec context: pix_fmt=bgr0
+Video output codec: h264 (ID: 27)
