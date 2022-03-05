@@ -14,7 +14,7 @@ int main(int argc, char const* argv[]) {
 	cout << "*********** SCREEN CAPTURE CONFIGURATION *************"<<endl;
 	cout << "******************************************************"<<endl;
 
-	cout << "- Set area size (in format LENGTHxWIDTH) -> ";
+	cout << "- Set area size (in format WIDTHxHEIGHT) -> ";
 	cin >> area_size;
 
 	cout << "- Set area offset (in format x,y) -> ";
