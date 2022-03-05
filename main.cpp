@@ -5,30 +5,25 @@
 int main(int argc, char const* argv[]) {
 
 	string area_size;
-	string area_offset_x;
-	string area_offset_y;
 	string area_offsets;
 	string audio_flag_c;
 	bool audio_flag;
 	string out_filename;
 
 	cout << "*********** SCREEN CAPTURE *************"<<endl;
-	cout << "-"<<endl;
 
-	cout << "Set area size:" << endl;
+	cout << "Set area size:";
 	cin >> area_size;
+	cout << endl;
 
-	cout << "Set area offset x:" << endl;
-	cin >> area_offset_x;
-
-	cout << "Set area offset y:" << endl;
-	cin >> area_offset_y;
-
-	area_offsets = area_offset_x + "," + area_offset_y;
+	cout << "Set area offset in format x,y:" << endl;
+	cin >> area_offsets;
+	cout << endl;
 
 	cout << "Do you want to record audio?" << endl;
 	cin >> audio_flag_c;
 	audio_flag = audio_flag_c == "1" ? true : false;
+	cout << endl;
 
 	cout << "Set output file name:" << endl;
 	cin >> out_filename;
