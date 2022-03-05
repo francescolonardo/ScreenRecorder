@@ -218,8 +218,10 @@ void ScreenRecorder::changeRecStatus() {
 // --------- INITIALIZATION FUNCTIONS -----------
 // ----------------------------------------------
 void ScreenRecorder::openInputDeviceVideo() {
+
 	// registering devices
-	avdevice_register_all(); // must be executed, otherwise av_find_input_format() fails
+	// must be executed, otherwise av_find_input_format() fails
+	avdevice_register_all(); 
 
 	// specifying the screen device as: x11grab (Linux), gdigrab (Windows) or avfoundation (Mac)
 	string screen_device;
@@ -239,6 +241,7 @@ void ScreenRecorder::openInputDeviceVideo() {
 	// getting current display information
 	string screen_number, screen_width, screen_height;
 	string screen_url;
+
 #if defined(__linux__)
 	// get current display number
 	screen_number = getenv("DISPLAY");
@@ -260,13 +263,14 @@ void ScreenRecorder::openInputDeviceVideo() {
 
 #elif defined(_WIN32) || defined(__CYGWIN__)
 	screen_url = "desktop";
+
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: implement it
 	screen_url = "Capture screen 0:none"; // screen_url = "Capture screen 0:none"; or screen_url = "0:none";
 #endif
 
-	// filling the AVFormatContext opening the input file (screen) and reading its header
-	// (codecs are not opened, so we can't analyse them)
+	// allocate memory to the component AVFormatContext that will hold information about the format (container),
+	// opening the input file (screen) and reading its header
 	vin_format_context = avformat_alloc_context();
 
 	// setting up (video) input options for the demuxer
@@ -280,6 +284,7 @@ void ScreenRecorder::openInputDeviceVideo() {
 	value = av_dict_set(&vin_options, "video_size", area_size.c_str(), 0);
 	if (value < 0)
 		debugger("Error setting video input options (video_size)\n", AV_LOG_ERROR, value);
+
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: check this!
 	// area_size: 1920x1200
@@ -312,14 +317,15 @@ void ScreenRecorder::openInputDeviceVideo() {
 	if (value < 0)
 		debugger("Error setting video input options (probesize)\n", AV_LOG_ERROR, value);
 
-	// opening screen url
+	// open the screen url, read it's header and fill the AVFormatContext with minimal information about the format
+	// It expects an AVFormatContext, a filename and two optional arguments: the AVInputFormat (if you pass NULL,
+	// FFmpeg will guess the format but we've just got it) and the AVDictionary (which are the options to the demuxer).
 	value = avformat_open_input(&vin_format_context, screen_url.c_str(), vin_format, &vin_options);
 	if (value < 0)
 		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
 
-	// stream (packets' flow) information analysis
-	// reads packets to get stream information
-	// this function populates vin_format_context->streams (with vin_format_context->nb_streams streams)
+	// to access the streams, we need to read data from the media using this function ow, the vin_format_context->nb_streams 
+	//will hold the amount of streams and the vin_format_context->streams[i] will give us the i stream (an AVStream).
 	value = avformat_find_stream_info(vin_format_context, &vin_options);
 	if (value < 0)
 		debugger("Cannot find stream (video) information\n", AV_LOG_ERROR, value);
@@ -328,21 +334,26 @@ void ScreenRecorder::openInputDeviceVideo() {
 }
 
 void ScreenRecorder::openInputDeviceAudio() {
+
 	// specifying the microphone device/url
 	string mic_device, mic_url;
 #if defined(__linux__)
 	mic_device = "pulse";
 	mic_url = "default";
+
 #elif defined(_WIN32) || defined(__CYGWIN__)
 	// TODO: implement this
 	mic_device = "dshow";
+
 #ifdef WINDOWS
 	mic_url = DS_GetDefaultDevice("a");
 	if (mic_url == "")
 		debugger("Failed to get default microphone device\n", AV_LOG_ERROR, 0);
 	mic_url = "audio=" + mic_url;
 #endif
+
 	mic_url = "audio=Microphone (Realtek(R) Audio)";
+
 #elif defined(__APPLE__) && defined(__MACH__)
 	// TODO: implement this
 	mic_device = "avfoundation";
@@ -363,11 +374,6 @@ void ScreenRecorder::openInputDeviceAudio() {
 	value = av_dict_set(&ain_options, "sample_rate", "44100", 0);
 	if (value < 0)
 		debugger("Error setting audio input options (sample_rate)\n", AV_LOG_ERROR, value);
-	/*
-	value = av_dict_set(&ain_options, "async", "25", 0);
-	if (value < 0)
-		debugger("Error setting audio input options (async)\n", AV_LOG_ERROR, value);
-	*/
 
 	// opening mic url
 	value = avformat_open_input(&ain_format_context, mic_url.c_str(), ain_format, &ain_options);
@@ -385,6 +391,7 @@ void ScreenRecorder::openInputDeviceAudio() {
 }
 
 void ScreenRecorder::prepareDecoderVideo() {
+
 	// we have to find a stream (stream type: AVMEDIA_TYPE_VIDEO)
 	// value will be the index of the found stream
 	value = av_find_best_stream(vin_format_context, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
@@ -398,20 +405,22 @@ void ScreenRecorder::prepareDecoderVideo() {
 
 	vin_fps = AVRational{ stoi(video_fps), 1 };
 
-	// the component that knows how to decode the stream it's the codec
-	// we can get it from the parameters of the codec used by the video stream (we just need codec_id)
+	// each stream contains codecpar that are parameters that tell us how to decode/encode the stream;
+	// passing those informations (codec_id) to the function avcodec_find_decoder we can find the 
+	// proper codec 
 	AVCodec* vin_codec = avcodec_find_decoder(vin_stream->codecpar->codec_id);
 	if (!vin_codec)
 		debugger("Cannot find the video decoder\n", AV_LOG_ERROR, 0);
 
-	// allocate memory for the (video) input codec context
-	// AVCodecContext holds data about media configuration
-	// such as bit rate, frame rate, sample rate, channels, height, and many others
+	// with the codec, we can allocate memory for the AVCodecContext, which will hold the context for 
+	// our decode/encode process.
 	vin_codec_context = avcodec_alloc_context3(vin_codec);
 	if (!vin_codec_context)
 		debugger("Failed to allocate memory for the video decoding context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 
-	// fill the (video) input codec context with the input stream parameters
+	// once we've allocated the memory for the codec context we need to fill it with CODEC parameters
+	// such as bit rate, frame rate, sample rate, channels, height, and many others taking them
+	// from the stream: vin_stream->codecpar
 	value = avcodec_parameters_to_context(vin_codec_context, vin_stream->codecpar);
 	if (value < 0)
 		debugger("Unable to copy input stream parameters to video input codec context\n", AV_LOG_ERROR, value);
@@ -459,11 +468,13 @@ void ScreenRecorder::prepareDecoderAudio() {
 }
 
 void ScreenRecorder::prepareEncoderVideo() {
+
 	// -------------- extra ------------- //
 	// (try to) guess output format from output filename
 	out_format = av_guess_format(NULL, out_filename.c_str(), NULL);
 	if (!out_format)
 		debugger("Failed to guess output format\n", AV_LOG_ERROR, 0);
+		
 	// we need to prepare the output media file
 	// allocate memory for the output format context
 	value = avformat_alloc_output_context2(&out_format_context, out_format, out_format->name, out_filename.c_str());
