@@ -8,7 +8,7 @@ int main(int argc, char const* argv[]) {
 	string area_offset_x;
 	string area_offset_y;
 	string area_offsets;
-	string audio_flag_s;
+	char audio_flag_i;
 	bool audio_flag;
 	string out_filename;
 
