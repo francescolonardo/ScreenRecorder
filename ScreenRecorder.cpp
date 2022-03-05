@@ -709,14 +709,12 @@ void ScreenRecorder::debugger(string str, int level, int errnum)
 		av_strerror(errnum, errbuf, sizeof(errbuf));
 		str += errbuf;
 	}
-	logger(str);
-	av_log(NULL, level, str.c_str());
+	// av_log(NULL, level, str.c_str());
 	if (level == AV_LOG_ERROR)
-		if (errnum < 0)
-			exit(errnum);
-		else
-			exit(-1);
-	// throw logic_error{str};
+	{
+		logger(str);
+		throw runtime_error{str};
+	}
 }
 
 void ScreenRecorder::openInputDeviceVideo()
@@ -737,7 +735,6 @@ void ScreenRecorder::openInputDeviceVideo()
 	// AVInputFormat holds the header information from the input format (container)
 	vin_format = av_find_input_format(screen_device.c_str());
 	if (!vin_format)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Unknow screen device\n", AV_LOG_ERROR, 0);
 
 	// getting current display information
@@ -751,7 +748,6 @@ void ScreenRecorder::openInputDeviceVideo()
 	{
 		snprintf(tmp_str, sizeof(tmp_str), "Cannot open current display (%s)\n",
 				 screen_number.c_str());
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger(tmp_str, AV_LOG_WARNING, 0);
 	}
 	// get current screen's size
@@ -780,12 +776,10 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	value = av_dict_set(&vin_options, "pixel_format", "bgr0", 0); // bgr0 or yuyv422 or uyvy422
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (pixel_format)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__) || defined(_WIN32) || defined(__CYGWIN__)
 	value = av_dict_set(&vin_options, "video_size", area_size.c_str(), 0);
-	// TODO: debugger can be removed - throw std::runtime_error
 	if (value < 0)
 		debugger("Error setting video input options (video_size)\n", AV_LOG_ERROR, value);
 #elif defined(__APPLE__) && defined(__MACH__)
@@ -804,30 +798,25 @@ void ScreenRecorder::openInputDeviceVideo()
 
 	value = av_dict_set(&vin_options, "framerate", video_fps.c_str(), 0);
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (framerate)\n", AV_LOG_ERROR, value);
 
 	value = av_dict_set(&vin_options, "preset", "fast", 0);
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting input options (preset)\n", AV_LOG_ERROR, value);
 
 #if defined(__linux__)
 	value = av_dict_set(&vin_options, "show_region", "1", 0); // https://stackoverflow.com/questions/52863787/record-region-of-screen-using-ffmpeg
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (show_region)\n", AV_LOG_ERROR, value);
 #endif
 
 	value = av_dict_set(&vin_options, "probesize", "20M", 0); // https://stackoverflow.com/questions/57903639/why-getting-and-how-to-fix-the-warning-error-on-ffmpeg-not-enough-frames-to-es
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Error setting video input options (probesize)\n", AV_LOG_ERROR, value);
 
 	// opening screen url
 	value = avformat_open_input(&vin_format_context, screen_url.c_str(), vin_format, &vin_options);
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot open screen url\n", AV_LOG_ERROR, value);
 
 	// stream (packets' flow) information analysis
@@ -835,7 +824,6 @@ void ScreenRecorder::openInputDeviceVideo()
 	// this function populates vin_format_context->streams (with vin_format_context->nb_streams streams)
 	value = avformat_find_stream_info(vin_format_context, &vin_options);
 	if (value < 0)
-		// TODO: debugger can be removed - throw std::runtime_error
 		debugger("Cannot find stream (video) information\n", AV_LOG_ERROR, value);
 
 	av_dict_free(&vin_options);

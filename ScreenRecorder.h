@@ -10,9 +10,6 @@
 #elif defined(_WIN32) || defined(__CYGWIN__)
 #define PLATFORM_NAME "windows" // Windows (x86 or x64)
 #include <curses.h>
-#ifdef WINDOWS
-#include "ListAVDevices.h"
-#endif
 #elif defined(__APPLE__) && defined(__MACH__)
 #define PLATFORM_NAME "mac" // Apple Mac OS
 #include <ncurses.h>
@@ -75,15 +72,21 @@ using namespace std;
 class ScreenRecorder
 {
 private:
+	// *** CLI object
 	CommandLineInterface cli{};
+
+	// executable's parameters
+	string area_size, area_offsets;
+#if defined(__APPLE__) && defined(__MACH__)
+	string area_width, area_height, area_x_offset, area_y_offset;
+#endif
+	string video_fps;
+	bool audio_flag;
+	string out_filename;
 
 	// rec_status change management
 	uint8_t rec_status;
 	mutex rec_status_mtx;
-	mutex v_rec_status_mtx;
-	mutex a_rec_status_mtx;
-	condition_variable v_rec_status_cv;
-	condition_variable a_rec_status_cv;
 
 	// av queues management
 	queue<AVPacket *> vin_packets_q;
@@ -97,26 +100,17 @@ private:
 	mutex av_write_frame_mtx;
 
 	// captured/elaborated packets mutual esclusion
+	uint64_t v_packets_captured, v_packets_elaborated; // counters
 	mutex v_packets_captured_mtx;
 	mutex v_packets_elaborated_mtx;
 
-	// executable's parameters
-	string area_size, area_offsets;
-#if defined(__APPLE__) && defined(__MACH__)
-	string area_width, area_height, area_x_offset, area_y_offset;
-#endif
-	string video_fps;
-	bool audio_flag;
-	string out_filename;
-	bool test_flag;
-
+	// errors' management
 	ofstream log_file; // logger()
 	char errbuf[32];   // debugger()
 
 	// globals' definition
 	char tmp_str[100];
-	int value;
-	uint64_t v_packets_captured, v_packets_elaborated; // counters
+	int value; // value returned by ffmpeg's functions
 
 	// threads' pointers
 	unique_ptr<thread> capture_video_thrd;
@@ -169,7 +163,6 @@ private:
 	AVPacket *aout_packet;
 
 	string getTimestamp();
-	// TODO: find other names
 	void logger(string str);
 	void debugger(string str, int level, int errnum);
 

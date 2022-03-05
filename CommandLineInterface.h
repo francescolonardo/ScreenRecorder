@@ -2,13 +2,10 @@
 #define COMMANDLINEINTERFACE_H
 
 #if defined(__linux__)
-#define PLATFORM_NAME "linux" // Linux
 #include <ncurses.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
-#define PLATFORM_NAME "windows" // Windows (x86 or x64)
 #include <curses.h>
 #elif defined(__APPLE__) && defined(__MACH__)
-#define PLATFORM_NAME "mac" // Apple Mac OS
 #include <ncurses.h>
 #endif
 
