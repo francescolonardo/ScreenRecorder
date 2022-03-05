@@ -1,1 +1,1 @@
-g++ -Wno-deprecated -Wno-format-zero-length -Wno-write-strings -g main.cpp ScreenRecorder.cpp CommandLineInterface.cpp $(pkg-config --libs libavformat libavcodec libavdevice libavfilter libavutil libswscale libswresample x11) -lpthread -lncurses -o main
+g++ -Wno-deprecated -Wno-format-zero-length -Wno-write-strings -std=c++14 -g main.cpp ScreenRecorder.cpp CommandLineInterface.cpp $(pkg-config --libs libavformat libavcodec libavdevice libavfilter libavutil libswscale libswresample x11) -lncurses -o main

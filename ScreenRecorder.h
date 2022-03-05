@@ -1,41 +1,25 @@
-#ifndef SCREENRECORDER_H
-#define SCREENRECORDER_H
-
 #include "CommandLineInterface.h"
 
 #if defined(__linux__)
-#define PLATFORM_NAME "linux" // Linux
 #include <X11/Xlib.h>
-#include <ncurses.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
-#define PLATFORM_NAME "windows" // Windows (x86 or x64)
-#include <curses.h>
+#include <wtypes.h>
 #elif defined(__APPLE__) && defined(__MACH__)
-#define PLATFORM_NAME "mac" // Apple Mac OS
-#include <ncurses.h>
+#include <CoreGraphics/CoreGraphics.h>
 #endif
+
+#include <string>
+#include <queue>
+#include <set>
+#include <fstream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 #define STATELESS 0
 #define RECORDING 1
 #define PAUSED 2
 #define STOPPED 3
-
-#include <iostream>
-#include <cstdio>
-#include <cstdlib>
-#include <fstream>
-#include <cstring>
-#include <math.h>
-#include <string>
-#include <regex>
-#include <ctime>
-#include <queue>
-#include <set>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
-#include <unistd.h>
-#include <memory>
 
 #define __STDC_CONSTANT_MACROS
 
@@ -77,9 +61,7 @@ private:
 
 	// executable's parameters
 	string area_size, area_offsets;
-#if defined(__APPLE__) && defined(__MACH__)
 	string area_width, area_height, area_x_offset, area_y_offset;
-#endif
 	string video_fps;
 	bool audio_flag;
 	string out_filename;
@@ -195,5 +177,3 @@ public:
 	~ScreenRecorder();
 	void record();
 };
-
-#endif // SCREENRECORDER_H

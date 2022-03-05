@@ -1,6 +1,3 @@
-#ifndef COMMANDLINEINTERFACE_H
-#define COMMANDLINEINTERFACE_H
-
 #if defined(__linux__)
 #include <ncurses.h>
 #elif defined(_WIN32) || defined(__CYGWIN__)
@@ -8,10 +5,7 @@
 #elif defined(__APPLE__) && defined(__MACH__)
 #include <ncurses.h>
 #endif
-
 #include <iostream>
-#include <string>
-#include <cstring>
 #include <math.h>
 
 using namespace std;
@@ -40,5 +34,3 @@ public:
 
 	friend class ScreenRecorder;
 };
-
-#endif // COMMANDLINEINTERFACE_H

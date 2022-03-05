@@ -261,9 +261,17 @@ void ScreenRecorder::openInputDeviceVideo()
 	if (!vin_format)
 		debugThrowError("Unknow screen device\n", AV_LOG_ERROR, 0);
 
+	// extracting width and height from area_size
+	int delimiter1_pos = area_size.find("x");
+	area_width = area_size.substr(0, delimiter1_pos);
+	area_height = area_size.substr(delimiter1_pos + 1, area_size.length());
+	// extracting x_offset and y_offset from area_offsets
+	int delimiter2_pos = area_offsets.find(",");
+	area_x_offset = area_offsets.substr(0, delimiter2_pos);
+	area_y_offset = area_offsets.substr(delimiter2_pos + 1, area_offsets.length());
+
 	// getting current display information
-	string screen_number, screen_width, screen_height;
-	string screen_url;
+	string screen_number, screen_width, screen_height, screen_url;
 #if defined(__linux__)
 	// get current display number
 	screen_number = getenv("DISPLAY");
@@ -281,14 +289,36 @@ void ScreenRecorder::openInputDeviceVideo()
 	XCloseDisplay(display);
 
 	// setting screen_url basing on screen_number and area_offests
-	// TODO: add area_size and area_offsets check (towards current screen's size)
 	screen_url = screen_number + ".0+" + area_offsets;
 
 #elif defined(_WIN32) || defined(__CYGWIN__)
+	// get current screen's size
+	DEVMODE devmode;
+	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &devmode);
+	screen_width = to_string(devmode.dmPelsWidth);
+	screen_height = to_string(devmode.dmPelsHeight);
+
+	// setting default screen_url for Windows
 	screen_url = "desktop";
 #elif defined(__APPLE__) && defined(__MACH__)
-	// TODO: implement it
+	// get current screen's size
+	/*
+	#include <CoreGraphics/CoreGraphics.h>
+	auto mainDisplayId = CGMainDisplayID();
+	screen_width = to_string(CGDisplayPixelsWide(mainDisplayId));
+	screen_height = to_string(CGDisplayPixelsHigh(mainDisplayId));
+	*/
+	
+	// setting default screen_url for Mac OS
 	screen_url = "Capture screen 0:none"; // screen_url = "Capture screen 0:none"; or screen_url = "0:none";
+#endif
+
+#if defined(__linux__) ||  defined(_WIN32) || defined(__CYGWIN__)
+	// area_size and area_offsets check (towards current screen's size)
+	if ((stoi(area_x_offset) + stoi(area_width)) > stoi(screen_width))
+		debugThrowError("Check the input parameters: (area_x_offset + area_width) exceeds the current screen width\n", AV_LOG_ERROR, 0);
+	if ((stoi(area_y_offset) + stoi(area_height)) > stoi(screen_height))
+		debugThrowError("Check the input parameters: (area_y_offset + area_height) exceeds the current screen height\n", AV_LOG_ERROR, 0);
 #endif
 
 	// filling the AVFormatContext opening the input file (screen) and reading its header
@@ -307,15 +337,6 @@ void ScreenRecorder::openInputDeviceVideo()
 	if (value < 0)
 		debugThrowError("Error setting video input options (video_size)\n", AV_LOG_ERROR, value);
 #elif defined(__APPLE__) && defined(__MACH__)
-	// TODO: check this!
-	// area_size: e.g. 1920x1200
-	int delimiter1_pos = area_size.find("x");
-	area_width = area_size.substr(0, delimiter1_pos);
-	area_height = area_size.substr(delimiter1_pos + 1, area_size.length());
-	// area_offset: e.g. 0,0
-	int delimiter2_pos = area_offsets.find(",");
-	area_x_offset = area_offsets.substr(0, delimiter2_pos);
-	area_y_offset = area_offsets.substr(delimiter2_pos + 1, area_offsets.length());
 	// cropping basing on the input values
 	filter_descr = "crop=" + area_width + ":" + area_height + ":" + area_x_offset + ":" + area_y_offset;
 #endif
