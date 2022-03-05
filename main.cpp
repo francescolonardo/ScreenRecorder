@@ -4,6 +4,7 @@
 
 int main(int argc, char const* argv[]) {
 
+	/*
 	string area_size;
 	string area_offsets;
 	string audio_flag_c;
@@ -26,8 +27,8 @@ int main(int argc, char const* argv[]) {
 
 	cout << "- Set output file name -> ";
 	cin >> out_filename;
+	*/
 
-	/*
 	try {
 		if (argc < 5) {
 			cerr << "Missing arguments!" << endl;
@@ -55,10 +56,10 @@ int main(int argc, char const* argv[]) {
 			<< ex.what() << endl;
 	}
 
-	*/
-
+	/*
 	ScreenRecorder sr{ area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename };
 	sr.record();
+	*/
 
 	return 0;
 }
