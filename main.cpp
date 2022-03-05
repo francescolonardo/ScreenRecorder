@@ -10,7 +10,9 @@ int main(int argc, char const* argv[]) {
 	bool audio_flag;
 	string out_filename;
 
-	cout << "*********** SCREEN CAPTURE *************"<<endl;
+	cout << "******************************************************"<<endl;
+	cout << "*********** SCREEN CAPTURE CONFIGURATION *************"<<endl;
+	cout << "******************************************************"<<endl;
 
 	cout << "Set area size (in format LENGTHxWIDTH) -> ";
 	cin >> area_size;
