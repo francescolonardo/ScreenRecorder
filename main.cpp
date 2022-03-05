@@ -8,7 +8,7 @@ int main(int argc, char const* argv[]) {
 	string area_offset_x;
 	string area_offset_y;
 	string area_offsets;
-	char audio_flag_c;
+	string audio_flag_c;
 	bool audio_flag;
 	string out_filename;
 
@@ -28,7 +28,7 @@ int main(int argc, char const* argv[]) {
 
 	cout << "Do you want to record audio?" << endl;
 	cin >> audio_flag_c;
-	audio_flag = atoi(audio_flag_c) == 1 ? true : false;
+	audio_flag = audio_flag_c == "1" ? true : false;
 
 	cout << "Set output file name:" << endl;
 	cin >> out_filename;
