@@ -1,4 +1,5 @@
 #include "ScreenRecorder.h"
+#include "wtypes.h"
 
 #define DEFAULT_VIDEO_FPS "15"
 
@@ -10,9 +11,23 @@ int main(int argc, char const* argv[]) {
 	bool audio_flag;
 	string out_filename;
 
-	cout << "******************************************************"<<endl;
-	cout << "*********** SCREEN CAPTURE CONFIGURATION *************"<<endl;
-	cout << "******************************************************"<<endl;
+	RECT desktop;
+   // Get a handle to the desktop window
+	const HWND hDesktop = GetDesktopWindow();
+	// Get the size of screen to the variable desktop
+	GetWindowRect(hDesktop, &desktop);
+	// The top left corner will have coordinates (0,0)
+	// and the bottom right corner will have coordinates
+	// (horizontal, vertical)
+	horizontal = desktop.right;
+	vertical = desktop.bottom;
+	cout<< horizontal;
+	cout<< vertical;
+
+
+	cout << "******************************************************" << endl;
+	cout << "*********** SCREEN CAPTURE CONFIGURATION *************" << endl;
+	cout << "******************************************************" << endl;
 
 	cout << "- Set area size (in format WIDTHxHEIGHT) -> ";
 	cin >> area_size;
