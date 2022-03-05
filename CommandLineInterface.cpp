@@ -2,25 +2,26 @@
 
 CommandLineInterface::CommandLineInterface()
 {
-	// globals' initialization
+	// initializes the screen
+	initscr();
+	noecho();
+	// raw();
+	curs_set(0); // hide cursor
+
+	win = newwin(LINES, COLS, 0, 0);
+	refresh(); //  needed to draw the root window
+			   //  without this, apparently the child (win) never draw
 }
 
 CommandLineInterface::~CommandLineInterface()
 {
+	// deallocates memory and ends curses
+	delwin(win);
+	endwin();
 }
 
 void CommandLineInterface::cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename)
 {
-	// initializes the screen
-	initscr();
-	noecho();
-	// raw(); // TODO: check this!
-	curs_set(0); // hide cursor
-
-	win = newwin(LINES, COLS, 0, 0);
-	refresh(); //  need to draw the root window
-			   //  without this, apparently the child (win) never draw
-
 	// mvwprintw(win, rec_info_row++, 0, "Welcome to ScreenRecorder!");
 	// Start writing from position 0,0
 	mvwprintw(win, rec_info_row++, 0, "Recording area: %s from (%s)", area_size.c_str(), area_offsets.c_str());
@@ -129,7 +130,7 @@ void CommandLineInterface::cliKeyDetectedRecord()
 
 void CommandLineInterface::cliKeyDetectedStop()
 {
-	// flash();
+	flash();
 	wmove(win, 0, COLS - 12);
 	wclrtoeol(win);
 	string pressed_char_str = "Detected [s]";
@@ -162,8 +163,4 @@ void CommandLineInterface::cliEndWindow(string out_filename)
 
 	werase(win);
 	wrefresh(win);
-
-	// deallocates memory and ends curses
-	delwin(win);
-	endwin();
 }

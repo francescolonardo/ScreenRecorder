@@ -106,7 +106,7 @@ private:
 
 	// errors' management
 	ofstream log_file; // logger()
-	char errbuf[32];   // debugger()
+	char err_buf[32];  // debugger()
 
 	// globals' definition
 	char tmp_str[100];
@@ -162,9 +162,11 @@ private:
 	AVFrame *aout_frame;
 	AVPacket *aout_packet;
 
-	string getTimestamp();
-	void logger(string str);
-	void debugger(string str, int level, int errnum);
+	string getCurrentTimestamp();
+	void logFileError(string str);
+	void debugThrowError(string str, int level, int errnum);
+	string getCurrentTimeRecorded(unsigned int packets_counter, unsigned int video_fps);
+	void changeRecordingStatus();
 
 	void openInputDeviceVideo();
 	void openInputDeviceAudio();
@@ -180,20 +182,13 @@ private:
 	void prepareOutputFile();
 
 	void capturePacketsVideo();
-	void capturePacketsAudio();
 	void elaboratePacketsVideo();
 	void writePacketVideo(AVPacket *vin_packet, uint64_t ref_ts, int ref_response);
+	void capturePacketsAudio();
 	void elaboratePacketsAudio();
-	void changeRecStatus();
 
 	void deallocateResourcesVideo();
 	void deallocateResourcesAudio();
-
-	string getTimeRecorded(unsigned int packets_counter, unsigned int video_fps);
-
-#if defined(_WIN32) || defined(__CYGWIN__)
-	char getchar_win();
-#endif
 
 public:
 	ScreenRecorder(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
