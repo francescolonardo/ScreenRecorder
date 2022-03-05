@@ -14,17 +14,17 @@ int main(int argc, char const* argv[]) {
 	cout << "*********** SCREEN CAPTURE CONFIGURATION *************"<<endl;
 	cout << "******************************************************"<<endl;
 
-	cout << " - Set area size (in format LENGTHxWIDTH) -> ";
+	cout << "- Set area size (in format LENGTHxWIDTH) -> ";
 	cin >> area_size;
 
-	cout << " - Set area offset (in format x,y) -> ";
+	cout << "- Set area offset (in format x,y) -> ";
 	cin >> area_offsets;
 
-	cout << " - Do you want to record audio? (press 1 to record) -> ";
+	cout << "- Do you want to record audio? (press 1 to record) -> ";
 	cin >> audio_flag_c;
 	audio_flag = audio_flag_c == "1" ? true : false;
 
-	cout << " - Set output file name -> ";
+	cout << "- Set output file name -> ";
 	cin >> out_filename;
 
 	/*
