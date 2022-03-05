@@ -1,1 +1,0 @@
-Audio output codec: aac (ID: 86018)

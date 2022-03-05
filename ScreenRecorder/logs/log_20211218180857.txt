@@ -1,2 +1,0 @@
-Video output codec: h264 (ID: 27)
-Output file format (container) name: mp4 (MP4 (MPEG-4 Part 14))

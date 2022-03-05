@@ -1,1 +1,0 @@
-g++ -g -Wno-deprecated -Wno-format-zero-length -Wno-write-strings main.cpp -I${HOME}/ffmpeg_build/include/ -L${HOME}/ffmpeg_build/lib -libavcodec -libavdevice -libavfilter -libavformat -libavutil -libswresample -libswscale -lz -lpthread -o main

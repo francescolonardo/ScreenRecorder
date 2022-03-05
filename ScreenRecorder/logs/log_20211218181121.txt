@@ -1,1 +1,0 @@
-Video output codec: h264 (ID: 27)
