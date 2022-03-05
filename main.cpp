@@ -12,20 +12,17 @@ int main(int argc, char const* argv[]) {
 
 	cout << "*********** SCREEN CAPTURE *************"<<endl;
 
-	cout << "Set area size:";
+	cout << "Set area size (in format LENGTHxWIDTH) -> ";
 	cin >> area_size;
-	cout << endl;
 
-	cout << "Set area offset in format x,y:" << endl;
+	cout << "Set area offset (in format x,y) -> ";
 	cin >> area_offsets;
-	cout << endl;
 
-	cout << "Do you want to record audio?" << endl;
+	cout << "Do you want to record audio? (press 1 to record) -> ";
 	cin >> audio_flag_c;
 	audio_flag = audio_flag_c == "1" ? true : false;
-	cout << endl;
 
-	cout << "Set output file name:" << endl;
+	cout << "Set output file name -> ";
 	cin >> out_filename;
 
 	/*
