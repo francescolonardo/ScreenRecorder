@@ -1,11 +1,11 @@
 # ScreenRecorder
 
-Project for the ***Programmazione di Sistema*** course at the ***Politecnico di Torino***
+Project for the ***Programmazione di Sistema*** course at ***Politecnico di Torino***
 
 ### Group
 
-- [Francesco Lonardo](https://github.com/francescolonardo)
-- [Marco Barca](https://github.com/marcobarca)
+- [Francesco Lonardo](https://github.com/francescolonardo) S291039
+- [Marco Barca](https://github.com/marcobarca) S281702
 
 ## About the Project
 
