@@ -82,8 +82,8 @@ ScreenRecorder::~ScreenRecorder() {
 		capture_audio_thrd.get()->join();
 		elaborate_audio_thrd.get()->join();
 	}
-	change_rec_status_thrd.get()->join();
 	printf("hello");
+	change_rec_status_thrd.get()->join();
 	av_write_trailer(out_format_context);
 	
 	// deallocate everything
