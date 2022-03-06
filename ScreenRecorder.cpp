@@ -97,6 +97,12 @@ ScreenRecorder::~ScreenRecorder() {
 	cli.cliEndWindow(out_filename);
 }
 
+// record function starts five threads:
+// - video packets capture
+// - audio packets capture
+// - video packets elaborate
+// - audio packets elaborate
+// - manage recording status
 void ScreenRecorder::record() {
 	rec_status = RECORDING;
 
@@ -121,18 +127,22 @@ void ScreenRecorder::record() {
  ***********************
  */
 
+// getCurrentTimeStamp function returns the current local timestamp
 string ScreenRecorder::getCurrentTimestamp() {
 	const auto now = time(NULL);
 	char ts_str[16];
 	return strftime(ts_str, sizeof(ts_str), "%Y%m%d%H%M%S", localtime(&now)) ? ts_str : "";
 }
 
+// logfileError function writes the log file in case of errors.
 void ScreenRecorder::logFileError(string str) {
 	log_file.open("logs/log_" + getCurrentTimestamp() + ".txt", ofstream::app);
 	log_file.write(str.c_str(), str.size());
 	log_file.close();
 }
 
+// debugThrowError function handles throwing of runtime exceptions giving 
+// information about the error.
 void ScreenRecorder::debugThrowError(string error_str, int level, int err_num) {
 	if (err_num < 0) {
 		av_strerror(err_num, err_buf, sizeof(err_buf));
@@ -144,6 +154,8 @@ void ScreenRecorder::debugThrowError(string error_str, int level, int err_num) {
 	}
 }
 
+// getCurrentTimeRecorded function taking packets_counter and video_fps parameters as input
+// returns the current time of recording.
 string ScreenRecorder::getCurrentTimeRecorded(unsigned int packets_counter, unsigned int video_fps) {
 	int time_recorded_msec = 1000 * packets_counter / video_fps;
 
@@ -161,6 +173,9 @@ string ScreenRecorder::getCurrentTimeRecorded(unsigned int packets_counter, unsi
 	return time_str;
 }
 
+// changeRecordingStatus function handles the commands of the user (RECORDING, STOPPED, PAUSED).
+// This function access just one shared resource:
+// - rec_status -> status of the program (RECORDING, PAUSE, ...)
 void ScreenRecorder::changeRecordingStatus() {
 	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock);
 
@@ -755,6 +770,8 @@ void ScreenRecorder::prepareCaptureAudio() {
 		debugThrowError("Failed to allocate memory for the audio output packet\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 }
 
+// prepareOutputFile function prepares the output file writing the header and setting
+// up the options for the demuxer.
 void ScreenRecorder::prepareOutputFile() {
 	// some container formats (MP4 is one of them) require global headers
 	// we need to mark the encoder
@@ -877,8 +894,8 @@ end:
 // elaboration function takes them in order to decode them into frames.
 // This function access various shared resources:
 // - rec_status -> status of the program (RECORDING, PAUSE, ...)
-// - vin_packets_q -> queue of packets
-// - v_packets_captured -> variable that represents the number of captured packets
+// - vin_packets_q -> queue of video packets
+// - v_packets_captured -> variable that represents the number of captured video packets
 
 void ScreenRecorder::capturePacketsVideo() {
 	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock);
@@ -1199,6 +1216,9 @@ void ScreenRecorder::writePacketVideo(AVPacket* vin_packet, uint64_t ref_ts, int
 	// ------------------------------- /transcode video ------------------------------ //
 }
 
+// This function access various shared resources:
+// - rec_status -> status of the program (RECORDING, PAUSE, ...)
+// - ain_packets_q -> queue of audio packets
 void ScreenRecorder::capturePacketsAudio() {
 	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock);
 	unique_lock<mutex> ain_packets_q_ul{ ain_packets_q_mtx, defer_lock };
@@ -1237,6 +1257,11 @@ void ScreenRecorder::capturePacketsAudio() {
 	rec_status_ul.unlock();
 }
 
+// This function access various shared resources:
+// - rec_status -> status of the program (RECORDING, PAUSE, ...)
+// - ain_packets_q -> queue of audio packets
+// - out_format_context (av_write_frame) -> all the packets will be written in the 
+// 	 output_format_context (both audio and video).
 void ScreenRecorder::elaboratePacketsAudio() {
 	unique_lock<mutex> ain_packets_q_ul{ ain_packets_q_mtx, defer_lock };
 	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock);
