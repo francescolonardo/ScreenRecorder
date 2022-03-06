@@ -3,30 +3,60 @@
 
 #define DEFAULT_VIDEO_FPS "15"
 
-
 string area_size;
 string area_offsets;
 bool audio_flag;
 string out_filename;
 
-bool checkArgumentsNumber(int argc) {
-	if (argc < 5) {
-		cerr << "Missing arguments!" << endl;
-		cout << "Usage: ./main widthxheight x_offset,y_offset audio_flag output_filename.mp4" << endl;
-		cout << "Example: ./main 1920x1200 0,0 1 output_video.mp4" << endl;
-		return false;
-	}
-	else if (argc > 5) {
-		cerr << "Too much arguments!" << endl;
-		cout << "Usage: ./main widthxheight x_offset,y_offset audio_flag output_filename.mp4" << endl;
-		cout << "Example: ./main 1920x1200 0,0 1 output_video.mp4" << endl;
-		return false;
-	}
-	else
-		return true;
+void getParametersFromMenu()
+{
+	cout << "*****************************************" << endl;
+	cout << "*          ScreenRecorder menu          *" << endl;
+	cout << "*****************************************" << endl;
+
+	cout << "- Set the area size to be recorded: its format must be `widthxheight` (e.g. 1920x1200) -> ";
+	cin >> area_size;
+
+	cout << "- Set the area offsets: its format must be `x_offset,y_offset` (e.g. 0,0) -> ";
+	cin >> area_offsets;
+
+	cout << "- Do you want to record the microphone audio? (press `1` if yes, `0` if no) -> ";
+	cin >> audio_flag;
+
+	cout << "- Set the output filename, the extension must be `.mp4` (e.g. output_video.mp4) -> ";
+	cin >> out_filename;
 }
 
-bool checkArgumentsFormat(char const* argv[]) {
+bool checkArgumentsNumber(int argc)
+{
+	if (argc == 1)
+	{
+		getParametersFromMenu();
+		return true;
+	}
+	else
+	{
+		if (argc < 5)
+		{
+			cerr << "Missing arguments!" << endl;
+			cout << "Usage: ./main widthxheight x_offset,y_offset audio_flag output_filename.mp4" << endl;
+			cout << "Example: ./main 1920x1200 0,0 1 output_video.mp4" << endl;
+			return false;
+		}
+		else if (argc > 5)
+		{
+			cerr << "Too much arguments!" << endl;
+			cout << "Usage: ./main widthxheight x_offset,y_offset audio_flag output_filename.mp4" << endl;
+			cout << "Example: ./main 1920x1200 0,0 1 output_video.mp4" << endl;
+			return false;
+		}
+		else
+			return true;
+	}
+}
+
+bool checkArgumentsFormat(char const *argv[])
+{
 	string arguments_check_errors = "";
 
 	regex area_size_rx("[0-9]+(x[0-9]+)+");
@@ -52,7 +82,8 @@ bool checkArgumentsFormat(char const* argv[]) {
 	else
 		arguments_check_errors += "Check the output filename's extension: it must be `.mp4` (e.g. output_video.mp4)\n";
 
-	if (arguments_check_errors != "") {
+	if (arguments_check_errors != "")
+	{
 		cerr << arguments_check_errors << endl;
 		return false;
 	}
@@ -60,50 +91,26 @@ bool checkArgumentsFormat(char const* argv[]) {
 		return true;
 }
 
+int main(int argc, char const *argv[])
+{
+	try
+	{
+		// check arguments' number
+		if (!checkArgumentsNumber(argc))
+			exit(1);
 
-int main(int argc, char const* argv[]) {
+		// check arguments' format
+		if (!checkArgumentsFormat(argv))
+			exit(1);
 
-	string audio_flag_c;
-
-	if (argc == 1) {
-		cout << "******************************************************" << endl;
-		cout << "*********** SCREEN CAPTURE CONFIGURATION *************" << endl;
-		cout << "******************************************************" << endl;
-
-		cout << "- Set area size (in format WIDTHxHEIGHT) -> ";
-		cin >> area_size;
-
-		cout << "- Set area offset (in format x,y) -> ";
-		cin >> area_offsets;
-
-		cout << "- Do you want to record audio? (press 1 to record) -> ";
-		cin >> audio_flag_c;
-		audio_flag = audio_flag_c == "1" ? true : false;
-
-		cout << "- Set output file name -> ";
-		cin >> out_filename;
+		ScreenRecorder sr{area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename};
+		sr.record();
 	}
-
-	else {
-
-		try {
-			// check arguments' number
-			if (!checkArgumentsNumber(argc))
-				exit(1);
-
-			// check arguments' format
-			if (!checkArgumentsFormat(argv))
-				exit(1);
-		}
-		catch (const exception& ex) {
-			cerr << endl
-				<< ex.what() << endl;
-		}
-
+	catch (const exception &ex)
+	{
+		cerr << endl
+			 << ex.what() << endl;
 	}
-
-	ScreenRecorder sr{ area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename };
-	sr.record();
 
 	return 0;
 }
