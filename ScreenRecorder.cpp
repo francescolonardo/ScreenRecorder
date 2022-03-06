@@ -220,6 +220,8 @@ void ScreenRecorder::changeRecordingStatus() {
 			rec_status_ul.lock();
 			rec_status = STOPPED;
 			rec_status_ul.unlock();
+			//TODO
+			printf("changeRecordingStatus");
 			return;
 		}
 		else
@@ -941,7 +943,8 @@ void ScreenRecorder::capturePacketsVideo() {
 
 		rec_status_ul.lock();
 	}
-
+	//TODO
+	printf("capturePacketsVideo");
 	rec_status_ul.unlock();
 }
 
@@ -1102,6 +1105,9 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		rec_status_ul.lock();
 	}
 
+	//TODO
+	printf("elaboratePacketsVideo");
+
 	rec_status_ul.unlock();
 	vin_packets_q_ul.unlock();
 }
@@ -1252,6 +1258,8 @@ void ScreenRecorder::capturePacketsAudio() {
 		}
 		rec_status_ul.lock();
 	}
+	//TODO
+	printf("capturePacketsAudio");
 
 	rec_status_ul.unlock();
 }
@@ -1454,6 +1462,9 @@ void ScreenRecorder::elaboratePacketsAudio() {
 		ain_packets_q_ul.lock();
 		rec_status_ul.lock();
 	}
+
+	//TODO
+	printf("elaboratePacketsAudio");
 
 	rec_status_ul.unlock();
 	ain_packets_q_ul.unlock();
