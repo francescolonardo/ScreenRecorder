@@ -23,8 +23,8 @@ CommandLineInterface::~CommandLineInterface()
 }
 
 void CommandLineInterface::debug(){
-	mvwprintw(win, cli.i, 50, "hello");
-	cli.i = cli.i + 1;
+	mvwprintw(win, this.i, 50, "hello");
+	this.i = this.i + 1;
 	wrefresh(win);
 }
 
