@@ -4,8 +4,8 @@ Project for the ***Programmazione di Sistema*** course at the ***Politecnico di 
 
 ### Group
 
-- [Francesco Lonardo] (https://github.com/francescolonardo)
-- [Marco Barca] (https://github.com/marcobarca)
+- [Francesco Lonardo](https://github.com/francescolonardo)
+- [Marco Barca](https://github.com/marcobarca)
 
 ## About the Project
 
@@ -16,7 +16,7 @@ Project for the ***Programmazione di Sistema*** course at the ***Politecnico di 
 
 ### ScreenRecorder Library
 
-Composed by **ScreenRecorder.ccp** and **ScreenRecorder.h**, it uses the [**ffmpeg**] (https://ffmpeg.org/) libraries to capture the frames (video/audio), to elaborate them, and to save the result in a **.mp4** file.
+Composed by **ScreenRecorder.ccp** and **ScreenRecorder.h**, it uses the [**ffmpeg**](https://ffmpeg.org/) libraries to capture the frames (video/audio), to elaborate them, and to save the result in a **.mp4** file.
 These libraries are **avcodec**, **avdevice**, **avfilter**, **avformat**, **avutil**, **libswscale** and **libswresample**.
 
 ---
@@ -46,9 +46,9 @@ These are the features offered by the library:
 
 ### CommandLineInterface Library
 
-Composed by **CommandLineInterface.ccp** and **CommandLineInterface.h**, it uses the [**ncurses**] (https://en.wikipedia.org/wiki/Ncurses) library to show in the command line an interface for pausing, stopping and resuming the recording.
+Composed by **CommandLineInterface.ccp** and **CommandLineInterface.h**, it uses the [**ncurses**](https://en.wikipedia.org/wiki/Ncurses) library to show in the command line an interface for pausing, stopping and resuming the recording.
 
 
-#### CommandLineInterface Screenshots
+### CommandLineInterface Screenshots
 
 ![Main window](./screenshots/screenshot.png)
