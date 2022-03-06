@@ -2,6 +2,8 @@
 
 CommandLineInterface::CommandLineInterface()
 {
+
+	int i = 0;
 	// initializes the screen
 	initscr();
 	noecho();
@@ -21,7 +23,8 @@ CommandLineInterface::~CommandLineInterface()
 }
 
 void CommandLineInterface::debug(){
-	mvwprintw(win, 0, 50, "h");
+	mvwprintw(win, i, 50, "hello");
+	i++;
 	wrefresh(win);
 }
 
