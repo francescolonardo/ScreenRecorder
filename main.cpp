@@ -95,8 +95,6 @@ int main(int argc, char const* argv[]) {
 			if (!checkArgumentsFormat(argv))
 				exit(1);
 
-			ScreenRecorder sr{ area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename };
-			sr.record();
 		}
 		catch (const exception& ex) {
 			cerr << endl
