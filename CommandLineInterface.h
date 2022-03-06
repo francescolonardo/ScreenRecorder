@@ -28,6 +28,8 @@ private:
 	void cliKeyDetectedStop();
 	void cliEndWindow(string out_filename);
 
+	void debug();
+
 public:
 	CommandLineInterface();
 	~CommandLineInterface();
