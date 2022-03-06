@@ -18,6 +18,9 @@ private:
 	int inner_box_height = 3, inner_box_width = 24;
 	int rec_info_row = 0;
 
+	CommandLineInterface();
+	~CommandLineInterface();
+
 	void cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
 	void cliVideoStreamInfo(const char *codec_id_name, const char *pix_fmt_name, bool audio_flag);
 	void cliAudioStreamInfo(const char *a_coded_id_name, int a_sample_rate, int a_bit_rate);
@@ -29,8 +32,5 @@ private:
 	void cliEndWindow(string out_filename);
 
 public:
-	CommandLineInterface();
-	~CommandLineInterface();
-
 	friend class ScreenRecorder;
 };

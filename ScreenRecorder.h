@@ -95,13 +95,12 @@ private:
 	int value; // value returned by ffmpeg's functions
 
 	// threads' pointers
-	unique_ptr<thread> capture_video_thrd;
-	unique_ptr<thread> elaborate_video_thrd;
-	unique_ptr<thread> capture_audio_thrd;
-	unique_ptr<thread> elaborate_audio_thrd;
-	unique_ptr<thread> change_rec_status_thrd;
+	unique_ptr<thread> capture_video_thrd_ptr;
+	unique_ptr<thread> elaborate_video_thrd_ptr;
+	unique_ptr<thread> capture_audio_thrd_ptr;
+	unique_ptr<thread> elaborate_audio_thrd_ptr;
+	unique_ptr<thread> change_rec_status_thrd_ptr;
 
-	// TODO: check if I need all these global variables
 	// video
 	AVInputFormat *vin_format;
 	AVFormatContext *vin_format_context;

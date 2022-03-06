@@ -3,6 +3,7 @@
 
 #define DEFAULT_VIDEO_FPS "15"
 
+/*
 string area_size;
 string area_offsets;
 bool audio_flag;
@@ -58,9 +59,10 @@ bool checkArgumentsFormat(char const* argv[]) {
 	else
 		return true;
 }
+*/
 
-int main(int argc, char const* argv[]) {
-	/*
+int main(int argc, char const *argv[])
+{
 	string area_size;
 	string area_offsets;
 	string audio_flag_c;
@@ -83,8 +85,8 @@ int main(int argc, char const* argv[]) {
 
 	cout << "- Set output file name -> ";
 	cin >> out_filename;
-	*/
 
+	/*
 	try {
 		// check arguments' number
 		if (!checkArgumentsNumber(argc))
@@ -101,11 +103,10 @@ int main(int argc, char const* argv[]) {
 		cerr << endl
 			<< ex.what() << endl;
 	}
+	*/
 
-	/*
 	ScreenRecorder sr{area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename};
 	sr.record();
-	*/
 
 	return 0;
 }

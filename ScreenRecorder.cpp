@@ -111,23 +111,23 @@ void ScreenRecorder::record()
 	rec_status = RECORDING;
 
 	// capture video packets
-	capture_video_thrd = make_unique<thread>([this]()
-											 { capturePacketsVideo(); });
+	capture_video_thrd_ptr = make_unique<thread>([this]()
+												 { capturePacketsVideo(); });
 	// capture audio packets
 	if (audio_flag)
-		capture_audio_thrd = make_unique<thread>([this]()
-												 { capturePacketsAudio(); });
+		capture_audio_thrd_ptr = make_unique<thread>([this]()
+													 { capturePacketsAudio(); });
 	// elaborate video packets
-	elaborate_video_thrd = make_unique<thread>([this]()
-											   { elaboratePacketsVideo(); });
+	elaborate_video_thrd_ptr = make_unique<thread>([this]()
+												   { elaboratePacketsVideo(); });
 	// elaborate audio packets
 	if (audio_flag)
-		elaborate_audio_thrd = make_unique<thread>([this]()
-												   { elaboratePacketsAudio(); });
+		elaborate_audio_thrd_ptr = make_unique<thread>([this]()
+													   { elaboratePacketsAudio(); });
 
 	// change recording status
-	change_rec_status_thrd = make_unique<thread>([this]()
-												 { changeRecordingStatus(); });
+	change_rec_status_thrd_ptr = make_unique<thread>([this]()
+													 { changeRecordingStatus(); });
 }
 
 /*
@@ -145,10 +145,10 @@ string ScreenRecorder::getCurrentTimestamp()
 }
 
 // logfileError function writes the log file in case of errors.
-void ScreenRecorder::logFileError(string str)
+void ScreenRecorder::logFileError(string error_str)
 {
 	log_file.open("logs/log_" + getCurrentTimestamp() + ".txt", ofstream::app);
-	log_file.write(str.c_str(), str.size());
+	log_file.write(error_str.c_str(), error_str.size());
 	log_file.close();
 }
 
@@ -199,11 +199,8 @@ void ScreenRecorder::changeRecordingStatus()
 	set<char> accepted_chars = {'p', 'P', 'r', 'R', 's', 'S'};
 	set<char>::iterator iter;
 
-	rec_status_ul.lock();
-	while (rec_status != STOPPED)
+	while (true)
 	{
-		rec_status_ul.unlock();
-
 		do
 		{
 			pressed_char = getch(); // waiting for a key // (n)curses
@@ -243,14 +240,12 @@ void ScreenRecorder::changeRecordingStatus()
 			rec_status_ul.lock();
 			rec_status = STOPPED;
 			rec_status_ul.unlock();
+
+			return;
 		}
 		else
 			rec_status_ul.unlock();
-
-		rec_status_ul.lock();
 	}
-
-	rec_status_ul.unlock();
 }
 
 /*
@@ -410,13 +405,7 @@ void ScreenRecorder::openInputDeviceAudio()
 
 #elif defined(_WIN32) || defined(__CYGWIN__)
 	mic_device = "dshow";
-	/*
-	mic_url = getAudioDevices()[0];
-	if (mic_url == "")
-		debugThrowError("Failed to get default microphone device\n", AV_LOG_ERROR, 0);
-	mic_url = "audio=" + mic_url;
-	*/
-	mic_url = "audio=Microphone (Realtek(R) Audio)"; // ??? hardcoded!
+	mic_url = "audio=Microphone (Realtek(R) Audio)";
 
 #elif defined(__APPLE__) && defined(__MACH__)
 	mic_device = "avfoundation";
@@ -588,24 +577,13 @@ void ScreenRecorder::prepareEncoderVideo()
 	vout_codec_context->pix_fmt = vout_codec->pix_fmts ? vout_codec->pix_fmts[0] : AV_PIX_FMT_YUV420P;
 
 	// other (video) output codec context properties
-	// total_bitrate = file_size / duration
-	// total_bitrate - audio_bitrate = video_bitrate
 	if (vout_codec_context->codec_id == AV_CODEC_ID_MPEG4)
 		vout_codec_context->bit_rate = 500 * 1000; // 500 kbps | can't set directly with x264
 	// https://stackoverflow.com/questions/18563764/why-low-qmax-value-improve-video-quality // higher the values, lower the quality
-	/*
-	vout_codec_context->qmin = 20;
-	vout_codec_context->qmax = 25;
-	*/
-	/*
-		vout_codec_context->gop_size = 50;	  // I think we have just I frames (useless)
-		vout_codec_context->max_b_frames = 2; // I think we have just I frames (useless)
-	*/
 
 	// setting up (video) output codec context timebase/framerate
 	vout_codec_context->time_base.num = 1;
 	vout_codec_context->time_base.den = vin_fps.num; // av_inv_q(vin_fps);
-	// vout_codec_context->framerate = vin_fps;		 // useless
 
 	// setting up (video) ouptut options for the demuxer
 	// https://trac.ffmpeg.org/wiki/Encode/H.264
@@ -614,20 +592,6 @@ void ScreenRecorder::prepareEncoderVideo()
 	{
 		av_dict_set(&vout_options, "preset", "fast", 0);
 		av_dict_set(&vout_options, "tune", "zerolatency", 0);
-
-		/*
-		av_opt_set(vout_codec_context, "preset", "ultrafast", 0);
-		av_opt_set(vout_codec_context, "tune", "zerolatency", 0);
-		av_opt_set(vout_codec_context, "cabac", "1", 0);
-		av_opt_set(vout_codec_context, "ref", "3", 0);
-		av_opt_set(vout_codec_context, "deblock", "1:0:0", 0);
-		av_opt_set(vout_codec_context, "analyse", "0x3:0x113", 0);
-		av_opt_set(vout_codec_context, "subme", "7", 0);
-		av_opt_set(vout_codec_context, "chroma_qp_offset", "4", 0);
-		av_opt_set(vout_codec_context, "rc", "crf", 0);
-		av_opt_set(vout_codec_context, "rc_lookahead", "40", 0);
-		av_opt_set(vout_codec_context, "crf", "10.0", 0);
-		*/
 	}
 
 	// turns on the (video) encoder
@@ -667,8 +631,6 @@ void ScreenRecorder::prepareEncoderAudio()
 		debugThrowError("Failed to allocate memory for the audio encoding context\n", AV_LOG_ERROR, AVERROR(ENOMEM));
 
 	// setting up (audio) output codec context properties
-	// aout_codec_context->codec_id = out_format_context->audio_codec; // AV_CODEC_ID_AAC; // useless
-	// aout_codec_context->codec_type = AVMEDIA_TYPE_AUDIO; // useless
 	aout_codec_context->channels = ain_codec_context->channels;
 	aout_codec_context->channel_layout = av_get_default_channel_layout(ain_codec_context->channels);
 	aout_codec_context->sample_rate = ain_codec_context->sample_rate;
@@ -693,9 +655,6 @@ void ScreenRecorder::prepareEncoderAudio()
 	value = avcodec_parameters_from_context(aout_stream->codecpar, aout_codec_context);
 	if (value < 0)
 		debugThrowError("Unable to copy audio output stream parameters from audio output codec context\n", AV_LOG_ERROR, value);
-
-	// setting up (audio) output stream timebase
-	// aout_stream->time_base = aout_codec_context->time_base; // TODO: check this!
 
 	// *** CLI - audio stream info
 	cli.cliAudioStreamInfo(avcodec_get_name(aout_codec_context->codec_id), aout_codec_context->sample_rate, aout_codec_context->sample_rate);
@@ -824,10 +783,6 @@ void ScreenRecorder::prepareOutputFile()
 
 	// setting up header options for the demuxer
 	AVDictionary *hdr_options = NULL;
-	// https://superuser.com/questions/980272/what-movflags-frag-keyframeempty-moov-flag-means
-	// av_dict_set(&hdr_options, "movflags", "frag_keyframe+empty_moov+delay_moov+default_base_moof", 0);
-	// av_opt_set(vout_codec_context->priv_data, "movflags", "frag_keyframe+delay_moov", 0);
-	// av_opt_set_int(vout_codec_context->priv_data, "crf", 28, AV_OPT_SEARCH_CHILDREN); // change `cq` to `crf` if using libx264
 
 	// an advanced container file (e.g. mp4) requires header information
 	value = avformat_write_header(out_format_context, &hdr_options);
@@ -840,7 +795,7 @@ void ScreenRecorder::prepareOutputFile()
 #if defined(__APPLE__) && defined(__MACH__)
 void ScreenRecorder::prepareFilterVideo()
 {
-	// we need a (video) input frame to store ???
+	// we need a (video) output frame to store the filtered frame temporary
 	vout_frame_filtered = av_frame_alloc();
 	if (!vout_frame_filtered)
 		debugThrowError("Failed to allocate memory for the video input frame filtered\n", AV_LOG_ERROR, AVERROR(ENOMEM));
@@ -876,11 +831,6 @@ void ScreenRecorder::prepareFilterVideo()
 	value = av_opt_set_int_list(buffersink_ctx, "pix_fmts", pix_fmts, AV_PIX_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
 	if (value < 0)
 		debugThrowError("Cannot set output pixel format\n", AV_LOG_ERROR, value);
-
-	/**
-	 * Set the endpoints for the filter graph. The filter_graph will
-	 * be linked to the graph described by filter_descr.
-	 */
 
 	/**
 	 * The buffer source output must be connected to the input pad of
@@ -1108,7 +1058,6 @@ void ScreenRecorder::elaboratePacketsVideo()
 				// ----------------------- synchronize (video) ouput packet ----------------------- //
 
 				// adjusting output packet timestamps (video)
-				// av_packet_rescale_ts(vout_packet, vin_stream->time_base, vout_stream->time_base);
 				vout_packet->pts = vout_packet->dts = ts; // av_rescale_q(vout_packet->pts, vout_stream->time_base,
 
 				// ----------------------- /synchronize (video) ouput packet ---------------------- //
@@ -1435,12 +1384,6 @@ void ScreenRecorder::elaboratePacketsAudio()
 					// adjusting output packet pts/dts/duration
 					av_packet_rescale_ts(aout_packet, aout_codec_context->time_base, aout_stream->time_base); // ???
 
-					// TODO: check this!
-					/*
-					if (aout_packet->pts < 0)
-						aout_packet->pts = aout_packet->dts = 0;
-					*/
-
 					// ---------------------- /synchronize (audio) output packet ---------------------- //
 
 					// write frames in output packet (audio)
@@ -1451,56 +1394,6 @@ void ScreenRecorder::elaboratePacketsAudio()
 						debugThrowError("Error writing audio output frame\n", AV_LOG_ERROR, response);
 
 					av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
-
-					/*
-					// if we are at the end ???
-					if (sig_ctrl_c)
-					{
-						// flush the encoder as it may have delayed frames ???
-						while (!last_frame)
-						{
-
-							// let's send the uncompressed (audio) output frame to the audio encoder
-							// through the audio output codec context
-							response = avcodec_send_frame(aout_codec_context, NULL);
-							while (!last_frame)
-							{
-								// and let's (try to) receive the output packet (compressed) from the audio encoder
-								// through the same codec context
-								response = avcodec_receive_packet(aout_codec_context, aout_packet);
-								if (response == AVERROR(EAGAIN)) // try again
-									break;
-								else if (response == AVERROR_EOF)
-								{
-									last_frame = true;
-									break;
-								}
-								else if (response < 0)
-									debugThrowError("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
-
-								aout_packet->stream_index = astream_idx;
-
-								// ----------------------- synchronize (audio) output packet ---------------------- //
-
-								// adjusting output packet pts/dts/duration
-
-								// print output packet information (audio)
-								// FIXME: fix this!
-								printf(" - Audio output packet: pts=%ld [dts=%ld], duration:%ld, size=%d\n",
-									aout_packet->pts, aout_packet->dts, aout_packet->duration, aout_packet->size);
-
-								// ---------------------- /synchronize (audio) output packet ---------------------- //
-
-								// write frames in output packet (audio)
-								response = av_interleaved_write_frame(out_format_context, aout_packet);
-								if (response < 0)
-									debugThrowError("Error writing audio output frame\n", AV_LOG_ERROR, response);
-
-								av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
-							}
-						}
-					}
-					*/
 				}
 				av_packet_unref(aout_packet); // wipe output packet (audio) buffer data
 											  // av_frame_unref(aout_frame);	  // wipe output frame (audio) buffer data
