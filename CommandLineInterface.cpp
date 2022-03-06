@@ -21,13 +21,11 @@ CommandLineInterface::~CommandLineInterface()
 	endwin();
 }
 
-
-void CommandLineInterface::cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename)
+void CommandLineInterface::cliStartWindow(string area_size, string area_offsets, bool audio_flag, string out_filename)
 {
 	// mvwprintw(win, rec_info_row++, 0, "Welcome to ScreenRecorder!");
 	// Start writing from position 0,0
 	mvwprintw(win, rec_info_row++, 0, "Recording area: %s from (%s)", area_size.c_str(), area_offsets.c_str());
-	mvwprintw(win, rec_info_row++, 0, "Selected video fps: %s", video_fps.c_str());
 	mvwprintw(win, rec_info_row++, 0, "Recording audio: %s", audio_flag ? "yes" : "no");
 	mvwprintw(win, rec_info_row++, 0, "Output file: %s", out_filename.c_str());
 

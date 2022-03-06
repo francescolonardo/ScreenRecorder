@@ -6,7 +6,7 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 	av_log_set_level(AV_LOG_ERROR);
 
 	// *** CLI - start window
-	cli.cliStartWindow(area_size, area_offsets, video_fps, audio_flag, out_filename);
+	cli.cliStartWindow(area_size, area_offsets, audio_flag, out_filename);
 
 	// globals' initialization
 	value = 0;
@@ -95,7 +95,6 @@ ScreenRecorder::~ScreenRecorder()
 	if (audio_flag)
 		deallocateResourcesAudio();
 
-	// TODO: remember to clean everything (e.g. tmp_str)
 	// *** CLI - end window
 	cli.cliEndWindow(out_filename);
 }
@@ -113,17 +112,19 @@ void ScreenRecorder::record()
 	// capture video packets
 	capture_video_thrd_ptr = make_unique<thread>([this]()
 												 { capturePacketsVideo(); });
-	// capture audio packets
-	if (audio_flag)
-		capture_audio_thrd_ptr = make_unique<thread>([this]()
-													 { capturePacketsAudio(); });
 	// elaborate video packets
 	elaborate_video_thrd_ptr = make_unique<thread>([this]()
 												   { elaboratePacketsVideo(); });
-	// elaborate audio packets
+
 	if (audio_flag)
+	{
+		// capture audio packets
+		capture_audio_thrd_ptr = make_unique<thread>([this]()
+													 { capturePacketsAudio(); });
+		// elaborate audio packets
 		elaborate_audio_thrd_ptr = make_unique<thread>([this]()
 													   { elaboratePacketsAudio(); });
+	}
 
 	// change recording status
 	change_rec_status_thrd_ptr = make_unique<thread>([this]()

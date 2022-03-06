@@ -21,7 +21,7 @@ private:
 	CommandLineInterface();
 	~CommandLineInterface();
 
-	void cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename);
+	void cliStartWindow(string area_size, string area_offsets, bool audio_flag, string out_filename);
 	void cliVideoStreamInfo(const char *codec_id_name, const char *pix_fmt_name, bool audio_flag);
 	void cliAudioStreamInfo(const char *a_coded_id_name, int a_sample_rate, int a_bit_rate);
 	void cliFramesTimeCentered(uint64_t v_packets_elaborated, uint64_t v_packets_captured, string time_str);
