@@ -3,7 +3,6 @@
 CommandLineInterface::CommandLineInterface()
 {
 
-	int i = 0;
 	// initializes the screen
 	initscr();
 	noecho();
@@ -20,12 +19,6 @@ CommandLineInterface::~CommandLineInterface()
 	// deallocates memory and ends curses
 	delwin(win);
 	endwin();
-}
-
-void CommandLineInterface::debug(){
-	mvwprintw(win, this->i, 50, "hello");
-	this->i = this->i + 1;
-	wrefresh(win);
 }
 
 void CommandLineInterface::cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename)
