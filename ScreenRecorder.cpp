@@ -78,11 +78,11 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 ScreenRecorder::~ScreenRecorder() {
 	capture_video_thrd.get()->join();
 	elaborate_video_thrd.get()->join();
+	printf("hello");
 	if (audio_flag) {
 		capture_audio_thrd.get()->join();
 		elaborate_audio_thrd.get()->join();
 	}
-	printf("hello");
 	change_rec_status_thrd.get()->join();
 	av_write_trailer(out_format_context);
 	
