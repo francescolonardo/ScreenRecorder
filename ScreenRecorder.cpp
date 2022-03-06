@@ -186,8 +186,10 @@ void ScreenRecorder::changeRecordingStatus()
 	set<char> accepted_chars = {'p', 'P', 'r', 'R', 's', 'S'};
 	set<char>::iterator iter;
 
-	while (true)
+	rec_status_ul.lock();
+	while (rec_status != STOPPED)
 	{
+		rec_status_ul.unlock();
 
 		do
 		{
@@ -228,12 +230,14 @@ void ScreenRecorder::changeRecordingStatus()
 			rec_status_ul.lock();
 			rec_status = STOPPED;
 			rec_status_ul.unlock();
-
-			break;
 		}
 		else
 			rec_status_ul.unlock();
+
+		rec_status_ul.lock();
 	}
+
+	rec_status_ul.unlock();
 }
 
 /*
@@ -389,10 +393,10 @@ void ScreenRecorder::openInputDeviceAudio()
 #elif defined(_WIN32) || defined(__CYGWIN__)
 	mic_device = "dshow";
 	/*
-	mic_url = DS_GetDefaultDevice("a");
+	mic_url = getAudioDevices()[0];
 	if (mic_url == "")
 		debugThrowError("Failed to get default microphone device\n", AV_LOG_ERROR, 0);
-	mic_url = "audio=" + mic_url;	
+	mic_url = "audio=" + mic_url;
 	*/
 	mic_url = "audio=Microphone (Realtek(R) Audio)"; // ??? hardcoded!
 
