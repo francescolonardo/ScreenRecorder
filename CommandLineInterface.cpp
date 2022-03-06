@@ -2,6 +2,7 @@
 
 CommandLineInterface::CommandLineInterface()
 {
+
 	// initializes the screen
 	initscr();
 	noecho();
@@ -19,6 +20,7 @@ CommandLineInterface::~CommandLineInterface()
 	delwin(win);
 	endwin();
 }
+
 
 void CommandLineInterface::cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename)
 {
