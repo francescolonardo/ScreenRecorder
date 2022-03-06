@@ -222,6 +222,7 @@ void ScreenRecorder::changeRecordingStatus() {
 			rec_status_ul.lock();
 			rec_status = STOPPED;
 			rec_status_ul.unlock();
+			return;
 		}
 		else
 			rec_status_ul.unlock();
