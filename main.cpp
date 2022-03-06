@@ -94,7 +94,6 @@ int main(int argc, char const* argv[]) {
 			// check arguments' format
 			if (!checkArgumentsFormat(argv))
 				exit(1);
-
 		}
 		catch (const exception& ex) {
 			cerr << endl
