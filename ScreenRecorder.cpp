@@ -175,7 +175,7 @@ string ScreenRecorder::getCurrentTimeRecorded(unsigned int packets_counter, unsi
 // This function access just one shared resource:
 // - rec_status -> status of the program (RECORDING, PAUSE, ...)
 void ScreenRecorder::changeRecordingStatus() {
-	printf("hello");
+	mvwprintw(win, 0, "hello");
 	unique_lock<mutex> rec_status_ul(rec_status_mtx, defer_lock);
 
 	char pressed_char;
