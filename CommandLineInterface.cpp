@@ -21,9 +21,6 @@ CommandLineInterface::~CommandLineInterface()
 	endwin();
 }
 
-void CommandLineInterface::debug(int p, string s){
-	mvwprintw(win, 50, p, string);
-}
 
 void CommandLineInterface::cliStartWindow(string area_size, string area_offsets, string video_fps, bool audio_flag, string out_filename)
 {

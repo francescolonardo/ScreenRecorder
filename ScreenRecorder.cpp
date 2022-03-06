@@ -76,13 +76,9 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 }
 
 ScreenRecorder::~ScreenRecorder() {
-	cli.debug(1, "1");
 	capture_video_thrd.get()->join();
-	cli.debug(2, "2");
 	elaborate_video_thrd.get()->join();
-	cli.debug(3, "3");
 	if (audio_flag) {
-		cli.debug(4, "4");
 		capture_audio_thrd.get()->join();
 		elaborate_audio_thrd.get()->join();
 	}
