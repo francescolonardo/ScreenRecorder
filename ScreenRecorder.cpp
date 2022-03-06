@@ -904,14 +904,14 @@ void ScreenRecorder::capturePacketsVideo()
 
 			if (rec_status == PAUSED)
 			{
-				rec_status_ul.unlock();
+				
 
 				av_packet_unref(tmp_vin_packet); // wipe input packet (video) buffer data (queue)
 				av_packet_free(&tmp_vin_packet); // free input packet (video) buffer data (queue)
 			}
 			else
 			{
-				rec_status_ul.unlock();
+				
 
 				vin_packets_q_ul.lock();
 				vin_packets_q.push(tmp_vin_packet);
@@ -922,6 +922,7 @@ void ScreenRecorder::capturePacketsVideo()
 				v_packets_captured++;
 				v_packets_captured_ul.unlock();
 			}
+			rec_status_ul.unlock();
 		}
 		else
 		{
