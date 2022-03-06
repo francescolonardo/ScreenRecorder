@@ -152,7 +152,7 @@ void ScreenRecorder::debugThrowError(string error_str, int level, int err_num) {
 	}
 }
 
-// getCurrentTimeRecorded function taking packets_counter and video_fps parameters as input
+// getCurrentTimeRecorded function takes packets_counter and video_fps parameters as input
 // returns the current time of recording.
 string ScreenRecorder::getCurrentTimeRecorded(unsigned int packets_counter, unsigned int video_fps) {
 	int time_recorded_msec = 1000 * packets_counter / video_fps;
