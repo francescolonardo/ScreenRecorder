@@ -3,7 +3,7 @@
 
 #define DEFAULT_VIDEO_FPS "15"
 
-/*
+
 string area_size;
 string area_offsets;
 bool audio_flag;
@@ -59,53 +59,50 @@ bool checkArgumentsFormat(char const* argv[]) {
 	else
 		return true;
 }
-*/
 
-int main(int argc, char const *argv[])
-{
-	string area_size;
-	string area_offsets;
+
+int main(int argc, char const* argv[]) {
+
 	string audio_flag_c;
-	bool audio_flag;
-	string out_filename;
 
-	cout << "******************************************************" << endl;
-	cout << "*********** SCREEN CAPTURE CONFIGURATION *************" << endl;
-	cout << "******************************************************" << endl;
+	if (argc == 1) {
+		cout << "******************************************************" << endl;
+		cout << "*********** SCREEN CAPTURE CONFIGURATION *************" << endl;
+		cout << "******************************************************" << endl;
 
-	cout << "- Set area size (in format WIDTHxHEIGHT) -> ";
-	cin >> area_size;
+		cout << "- Set area size (in format WIDTHxHEIGHT) -> ";
+		cin >> area_size;
 
-	cout << "- Set area offset (in format x,y) -> ";
-	cin >> area_offsets;
+		cout << "- Set area offset (in format x,y) -> ";
+		cin >> area_offsets;
 
-	cout << "- Do you want to record audio? (press 1 to record) -> ";
-	cin >> audio_flag_c;
-	audio_flag = audio_flag_c == "1" ? true : false;
+		cout << "- Do you want to record audio? (press 1 to record) -> ";
+		cin >> audio_flag_c;
+		audio_flag = audio_flag_c == "1" ? true : false;
 
-	cout << "- Set output file name -> ";
-	cin >> out_filename;
-
-	/*
-	try {
-		// check arguments' number
-		if (!checkArgumentsNumber(argc))
-			exit(1);
-
-		// check arguments' format
-		if (!checkArgumentsFormat(argv))
-			exit(1);
-
-		ScreenRecorder sr{ area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename };
-		sr.record();
+		cout << "- Set output file name -> ";
+		cin >> out_filename;
 	}
-	catch (const exception& ex) {
-		cerr << endl
-			<< ex.what() << endl;
-	}
-	*/
 
-	ScreenRecorder sr{area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename};
+	else {
+
+		try {
+			// check arguments' number
+			if (!checkArgumentsNumber(argc))
+				exit(1);
+
+			// check arguments' format
+			if (!checkArgumentsFormat(argv))
+				exit(1);
+		}
+		catch (const exception& ex) {
+			cerr << endl
+				<< ex.what() << endl;
+		}
+
+	}
+
+	ScreenRecorder sr{ area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename };
 	sr.record();
 
 	return 0;
