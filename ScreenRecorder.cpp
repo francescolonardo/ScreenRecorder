@@ -192,6 +192,7 @@ void ScreenRecorder::changeRecordingStatus() {
 
 		rec_status_ul.lock();
 		if (rec_status == RECORDING && (pressed_char == 'p' || pressed_char == 'P')) {
+			printf("hello");
 			rec_status_ul.unlock();
 
 			// *** CLI key detected [pause]
@@ -212,7 +213,6 @@ void ScreenRecorder::changeRecordingStatus() {
 			rec_status_ul.unlock();
 		}
 		else if (pressed_char == 's' || pressed_char == 'S') {
-			printf("hello");
 			rec_status_ul.unlock();
 
 			// *** CLI key detected [stop]
