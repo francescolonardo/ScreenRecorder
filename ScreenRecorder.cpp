@@ -1272,7 +1272,7 @@ void ScreenRecorder::elaboratePacketsAudio() {
 
 	ain_packets_q_ul.lock();
 	rec_status_ul.lock();
-	while (rec_status != STOPPED || !vin_packets_q.empty()) {
+	while (rec_status != STOPPED || !ain_packets_q.empty()) {
 		rec_status_ul.unlock();
 		ain_packets_q_cv.wait(ain_packets_q_ul, [this]() { return !ain_packets_q.empty(); });
 
