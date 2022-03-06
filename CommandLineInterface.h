@@ -27,6 +27,7 @@ private:
 	void cliKeyDetectedRecord();
 	void cliKeyDetectedStop();
 	void cliEndWindow(string out_filename);
+	void debug(int p, string s);
 
 public:
 	CommandLineInterface();
