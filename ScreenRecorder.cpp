@@ -996,11 +996,12 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		av_packet_unref(vin_packet); // wipe input packet (video) buffer data
 		av_packet_free(&vin_packet); // free input packet (video) buffer data
 
+		transcode:
 		while (response == 0) {
 			// receive the raw data frame (UNCOMPRESSED frame) from the decoder, through the same codec context
 			response = avcodec_receive_frame(vin_codec_context, vin_frame);
 			if (response == AVERROR(EAGAIN)) // try again
-				break;
+				goto transcode;
 			else if (response < 0)
 				debugThrowError("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
 
@@ -1049,12 +1050,13 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			response = avcodec_send_frame(vout_codec_context, vout_frame);
 
 #endif
+			encode:
 			while (response == 0) {
 				// and let's (try to) receive the output packet (compressed) from the video encoder
 				// through the same codec context
 				response = avcodec_receive_packet(vout_codec_context, vout_packet);
 				if (response == AVERROR(EAGAIN)) // try again
-					break;
+					goto encode;
 				else if (response < 0)
 					debugThrowError("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
 
