@@ -76,8 +76,8 @@ ScreenRecorder::ScreenRecorder(string area_size, string area_offsets, string vid
 }
 
 ScreenRecorder::~ScreenRecorder() {
-	capture_video_thrd.get()->join();
 	printf("hello");
+	capture_video_thrd.get()->join();
 	elaborate_video_thrd.get()->join();
 	if (audio_flag) {
 		capture_audio_thrd.get()->join();
