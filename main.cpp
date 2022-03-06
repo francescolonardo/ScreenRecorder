@@ -8,17 +8,14 @@ string area_offsets;
 bool audio_flag;
 string out_filename;
 
-bool checkArgumentsNumber(int argc)
-{
-	if (argc < 5)
-	{
+bool checkArgumentsNumber(int argc) {
+	if (argc < 5) {
 		cerr << "Missing arguments!" << endl;
 		cout << "Usage: ./main widthxheight x_offset,y_offset audio_flag output_filename.mp4" << endl;
 		cout << "Example: ./main 1920x1200 0,0 1 output_video.mp4" << endl;
 		return false;
 	}
-	else if (argc > 5)
-	{
+	else if (argc > 5) {
 		cerr << "Too much arguments!" << endl;
 		cout << "Usage: ./main widthxheight x_offset,y_offset audio_flag output_filename.mp4" << endl;
 		cout << "Example: ./main 1920x1200 0,0 1 output_video.mp4" << endl;
@@ -28,8 +25,7 @@ bool checkArgumentsNumber(int argc)
 		return true;
 }
 
-bool checkArgumentsFormat(char const *argv[])
-{
+bool checkArgumentsFormat(char const* argv[]) {
 	string arguments_check_errors = "";
 
 	regex area_size_rx("[0-9]+(x[0-9]+)+");
@@ -55,8 +51,7 @@ bool checkArgumentsFormat(char const *argv[])
 	else
 		arguments_check_errors += "Check the output filename's extension: it must be `.mp4` (e.g. output_video.mp4)\n";
 
-	if (arguments_check_errors != "")
-	{
+	if (arguments_check_errors != "") {
 		cerr << arguments_check_errors << endl;
 		return false;
 	}
@@ -64,8 +59,7 @@ bool checkArgumentsFormat(char const *argv[])
 		return true;
 }
 
-int main(int argc, char const *argv[])
-{
+int main(int argc, char const* argv[]) {
 	/*
 	string area_size;
 	string area_offsets;
@@ -91,8 +85,7 @@ int main(int argc, char const *argv[])
 	cin >> out_filename;
 	*/
 
-	try
-	{
+	try {
 		// check arguments' number
 		if (!checkArgumentsNumber(argc))
 			exit(1);
@@ -101,13 +94,12 @@ int main(int argc, char const *argv[])
 		if (!checkArgumentsFormat(argv))
 			exit(1);
 
-		ScreenRecorder sr{area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename};
+		ScreenRecorder sr{ area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename };
 		sr.record();
 	}
-	catch (const exception &ex)
-	{
+	catch (const exception& ex) {
 		cerr << endl
-			 << ex.what() << endl;
+			<< ex.what() << endl;
 	}
 
 	/*
