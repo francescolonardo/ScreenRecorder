@@ -92,7 +92,7 @@ ScreenRecorder::~ScreenRecorder() {
 		deallocateResourcesAudio();
 
 	// TODO: remember to clean everything (e.g. tmp_str)
-
+	printf("hello");
 	// *** CLI - end window
 	cli.cliEndWindow(out_filename);
 }
