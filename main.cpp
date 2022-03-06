@@ -5,10 +5,11 @@
 
 string area_size;
 string area_offsets;
+string audio_flag_str;
 bool audio_flag;
 string out_filename;
 
-void getParametersFromMenu()
+void getArgumentsFromMenu()
 {
 	cout << "*****************************************" << endl;
 	cout << "*          ScreenRecorder menu          *" << endl;
@@ -21,7 +22,8 @@ void getParametersFromMenu()
 	cin >> area_offsets;
 
 	cout << "- Do you want to record the microphone audio? (press `1` if yes, `0` if no) -> ";
-	cin >> audio_flag;
+	cin >> audio_flag_str;
+	audio_flag = audio_flag_str == "1" ? true : false;
 
 	cout << "- Set the output filename, the extension must be `.mp4` (e.g. output_video.mp4) -> ";
 	cin >> out_filename;
@@ -31,7 +33,7 @@ bool checkArgumentsNumber(int argc)
 {
 	if (argc == 1)
 	{
-		getParametersFromMenu();
+		getArgumentsFromMenu();
 		return true;
 	}
 	else
@@ -99,9 +101,12 @@ int main(int argc, char const *argv[])
 		if (!checkArgumentsNumber(argc))
 			exit(1);
 
-		// check arguments' format
-		if (!checkArgumentsFormat(argv))
-			exit(1);
+		if (argc != 1)
+		{
+			// check arguments' format
+			if (!checkArgumentsFormat(argv))
+				exit(1);
+		}
 
 		ScreenRecorder sr{area_size, area_offsets, DEFAULT_VIDEO_FPS, audio_flag, out_filename};
 		sr.record();
