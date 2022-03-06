@@ -181,6 +181,7 @@ void ScreenRecorder::changeRecordingStatus() {
 	set<char> accepted_chars = { 'p', 'P', 'r', 'R', 's', 'S' };
 	set<char>::iterator iter;
 
+	printf("hello");
 	rec_status_ul.lock();
 	while (rec_status != STOPPED) {
 		rec_status_ul.unlock();
@@ -191,7 +192,6 @@ void ScreenRecorder::changeRecordingStatus() {
 		} while (iter == accepted_chars.end());
 
 		rec_status_ul.lock();
-		printf("hello");
 		if (rec_status == RECORDING && (pressed_char == 'p' || pressed_char == 'P')) {
 			rec_status_ul.unlock();
 
