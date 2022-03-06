@@ -164,7 +164,6 @@ private:
 
 	void capturePacketsVideo();
 	void elaboratePacketsVideo();
-	void writePacketVideo(AVPacket *vin_packet, uint64_t ref_ts, int ref_response);
 	void capturePacketsAudio();
 	void elaboratePacketsAudio();
 
