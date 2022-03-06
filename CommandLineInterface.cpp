@@ -21,7 +21,7 @@ CommandLineInterface::~CommandLineInterface()
 }
 
 void CommandLineInterface::debug(){
-	mvwprintw(win, 50, "hello");
+	mvwprintw(win, 0, 50, "h");
 	wrefresh(win);
 }
 
