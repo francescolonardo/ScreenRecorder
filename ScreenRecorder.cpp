@@ -85,14 +85,13 @@ ScreenRecorder::~ScreenRecorder() {
 	change_rec_status_thrd.get()->join();
 
 	av_write_trailer(out_format_context);
-
+	printf("hello");
 	// deallocate everything
 	deallocateResourcesVideo();
 	if (audio_flag)
 		deallocateResourcesAudio();
 
 	// TODO: remember to clean everything (e.g. tmp_str)
-	printf("hello");
 	// *** CLI - end window
 	cli.cliEndWindow(out_filename);
 }
