@@ -996,12 +996,11 @@ void ScreenRecorder::elaboratePacketsVideo() {
 		av_packet_unref(vin_packet); // wipe input packet (video) buffer data
 		av_packet_free(&vin_packet); // free input packet (video) buffer data
 
-		transcode_video:
 		while (response == 0) {
 			// receive the raw data frame (UNCOMPRESSED frame) from the decoder, through the same codec context
 			response = avcodec_receive_frame(vin_codec_context, vin_frame);
 			if (response == AVERROR(EAGAIN)) // try again
-				goto transcode_video;
+				break;
 			else if (response < 0)
 				debugThrowError("Error receiving video input frame from the video decoder\n", AV_LOG_ERROR, response);
 
@@ -1050,13 +1049,12 @@ void ScreenRecorder::elaboratePacketsVideo() {
 			response = avcodec_send_frame(vout_codec_context, vout_frame);
 
 #endif
-			encode_video:
 			while (response == 0) {
 				// and let's (try to) receive the output packet (compressed) from the video encoder
 				// through the same codec context
 				response = avcodec_receive_packet(vout_codec_context, vout_packet);
 				if (response == AVERROR(EAGAIN)) // try again
-					goto encode_video;
+					break;
 				else if (response < 0)
 					debugThrowError("Error receiving video output packet from the video encoder\n", AV_LOG_ERROR, response);
 
@@ -1293,13 +1291,12 @@ void ScreenRecorder::elaboratePacketsAudio() {
 		av_packet_unref(ain_packet); // wipe input packet (audio) buffer data // TODO: check this!
 		av_packet_free(&ain_packet); // free input packet (audio) buffer data
 
-		transcode_audio:
 		while (response == 0) {
 			// and let's (try to) receive the (audio) input uncompressed frame from the audio decoder
 			// through same codec context
 			response = avcodec_receive_frame(ain_codec_context, ain_frame);
 			if (response == AVERROR(EAGAIN)) // try again
-				goto transcode_audio;
+				break;
 			else if (response < 0)
 				debugThrowError("Error receiving audio input frame from the audio decoder\n", AV_LOG_ERROR, response);
 
@@ -1361,15 +1358,13 @@ void ScreenRecorder::elaboratePacketsAudio() {
 				// let's send the uncompressed (audio) output frame to the audio encoder
 				// through the audio output codec context
 				response = avcodec_send_frame(aout_codec_context, aout_frame);
-
-				encode_audio:
 				while (response == 0) {
 
 					// and let's (try to) receive the output packet (compressed) from the audio encoder
 					// through the same codec context
 					response = avcodec_receive_packet(aout_codec_context, aout_packet);
 					if (response == AVERROR(EAGAIN)) // try again
-						goto encode_audio;
+						break;
 					else if (response < 0)
 						debugThrowError("Error receiving audio output packet from the audio encoder\n", AV_LOG_ERROR, response);
 
